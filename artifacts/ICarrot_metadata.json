@@ -1,0 +1,75 @@
+{
+	"compiler": {
+		"version": "0.8.12+commit.f00d7308"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "from",
+						"type": "address"
+					},
+					{
+						"internalType": "address",
+						"name": "to",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "amount",
+						"type": "uint256"
+					}
+				],
+				"name": "transferFrom",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"CarrotPrivateSale.sol": "ICarrot"
+		},
+		"evmVersion": "london",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"CarrotPrivateSale.sol": {
+			"keccak256": "0xc0d4437a5208c0404b8469a37afa6f7352b7a15b4e3cadfca50d0e416d0278b7",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://5929f523c11c12a8c82d956024fc9d14a0c0d1682e30d251a88564cd01031d31",
+				"dweb:/ipfs/QmTfhpfUgYkUauApM5AGyn52sagJrBcuAQrZpdGeDCiPZr"
+			]
+		}
+	},
+	"version": 1
+}
