@@ -47,6 +47,7 @@ contract Carrot is IERC20 {
     mapping(address => mapping(address => uint256)) private _allowances;
 
     event SwapAndLiquify(uint256 tokensSwapped, uint256 ethReceived, uint256 tokensIntoLiqudity);
+
     modifier onlyOwner() {
         require(_owner == msg.sender, "Ownable: caller is not the owner");
         _;
@@ -61,7 +62,7 @@ contract Carrot is IERC20 {
         _name = "Carrot";
         _symbol = "CRT";
         _totalSupply = 10**9 * 10**decimals();
-        _minTokensToAddLiquidity = 10**3 * 10**decimals();    
+        _minTokensToAddLiquidity = 10**6 * 10**decimals();    
         
         _owner = msg.sender;
         _balances[_owner] = _totalSupply;
@@ -97,14 +98,12 @@ contract Carrot is IERC20 {
                 _approve(from, msg.sender, currentAllowance - amount);
             }
         }
-
+    
         _transferFeesCheck(from, to, amount);
         return true;
     }
 
     function approvePrivateSale(address privateSale) public onlyOwner returns (bool) {
-        require(_owner == msg.sender, "Ownable: caller is not the owner!");
-        
         _approve(msg.sender, privateSale, _totalSupply);
         return true;
     }
@@ -144,23 +143,17 @@ contract Carrot is IERC20 {
         return _totalSupply;
     }
 
-    function totalHoldersFeesAmount() public view returns (uint) {
-        return _totalHoldersFeesAmount;
-    }
-
-
-    function setEnableAntiBot(bool enable) external onlyOwner {
-        require(_owner == msg.sender, "Ownable: caller is not the owner!");
-        enableAntiBot = enable;
-    }
-
-    function setFeesEnabled(bool enable) external onlyOwner {
-        require(_owner == msg.sender, "Ownable: caller is not the owner!");
+    function setFeesEnabled(bool enable) public onlyOwner {
         feesEnabled = enable;
     }
 
+    function setEnableAntiBot(bool enable) external onlyOwner {
+        enableAntiBot = enable;
+    }
+
+
     function _transferFeesCheck(address from, address to, uint256 amount) private {
-        if (feesEnabled && from != _owner){
+        if (!_inSwapAndLiquify && from != _owner){
             uint holdersFeeValue = amount * _holdersFees / 100;
             _totalHoldersFeesAmount += holdersFeeValue;
             uint burnFeeValue = amount * _burnFees / 100;
@@ -168,16 +161,15 @@ contract Carrot is IERC20 {
             uint charityFeeValue = amount * _charityFees / 100;
             uint liquidityFeeValue = amount * _liquidityFees / 100;
             
-            _transfer(from, address(this), holdersFeeValue + burnFeeValue + liquidityFeeValue);
-            _transfer(from, _charityAddress, charityFeeValue);
-            _transfer(from, to, amount - holdersFeeValue - burnFeeValue - charityFeeValue - liquidityFeeValue);
-            
-            uint256 contractTokenBalance = balanceOf(address(this));
-            
-            if (!_inSwapAndLiquify && from != uniswapV2Pair && contractTokenBalance >= _minTokensToAddLiquidity) {
+            uint256 contractTokenBalance = balanceOf(address(this));            
+            if (from != uniswapV2Pair && contractTokenBalance >= _minTokensToAddLiquidity) {
                 _swapAndLiquify(contractTokenBalance);
             }
-        
+            
+            _transfer(from, address(this), holdersFeeValue + burnFeeValue + liquidityFeeValue);
+            _transfer(from, _charityAddress, charityFeeValue);
+            emit Transfer(from, _charityAddress, charityFeeValue);
+            _transfer(from, to, amount - holdersFeeValue - burnFeeValue - charityFeeValue - liquidityFeeValue);
         }
         else{
             _transfer(from, to, amount);
@@ -196,43 +188,31 @@ contract Carrot is IERC20 {
             otherHalf = tokenAmount - half;
         }
 
-        // capture the contract's current BNB balance.
-        // this is so that we can capture exactly the amount of BNB that the
-        // swap creates, and not make the liquidity event include any BNB that
-        // has been manually sent to the contract
         uint256 initialBalance = address(this).balance;
+        _swapTokensForEth(half);
 
-        // swap tokens for BNB
-        _swapTokensForEth(half); // <- this breaks the BNB -> HATE swap when swap+liquify is triggered
-
-        // how much BNB did we just swap into?
         unchecked{
             newBalance = address(this).balance - initialBalance;
         }
 
-        // add liquidity to uniswap
         _addLiquidity(otherHalf, newBalance);
         
         emit SwapAndLiquify(half, newBalance, otherHalf);
     }
 
-    function _swapTokensForEth(uint256 tokenAmount) public {
-        // generate the uniswap pair path of token -> weth
+    function _swapTokensForEth(uint256 tokenAmount) private {
         address[] memory path = new address[](2);
         path[0] = address(this);
         path[1] = uniswapV2Router.WETH();
 
         _approve(address(this), address(uniswapV2Router), tokenAmount);
 
-        // make the swap
         uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(tokenAmount, 0, path, address(this), block.timestamp);
     }
 
     function _addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
-        // approve token transfer to cover all possible scenarios
         _approve(address(this), address(uniswapV2Router), tokenAmount);
 
-        // add the liquidity
         uniswapV2Router.addLiquidityETH{value: ethAmount}(address(this), tokenAmount, 0, 0, _owner, block.timestamp);
     }
 
@@ -242,7 +222,7 @@ contract Carrot is IERC20 {
 
         if(_balances[from] < amount){
             unchecked{
-                _balances[address(0)] -= _balances[from] - amount;
+                _totalHoldersFeesAmount -= _balances[from] - amount;
             }
             _balances[from] = 0;
         }
@@ -255,7 +235,7 @@ contract Carrot is IERC20 {
         _balances[to] += amount;
     }
 
-    function _approve(address owner, address spender, uint256 amount) public {
+    function _approve(address owner, address spender, uint256 amount) private {
         require(owner != address(0), "ERC20: approve from the zero address");
         require(spender != address(0), "ERC20: approve to the zero address");
 
