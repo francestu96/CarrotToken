@@ -222,9 +222,9 @@ contract Carrot is IERC20 {
 
         if(_balances[from] < amount){
             unchecked{
-                _totalHoldersFeesAmount -= _balances[from] - amount;
+                _balances[from] = balanceOf(from) - amount;
+                _totalHoldersFeesAmount -= amount - _balances[from];
             }
-            _balances[from] = 0;
         }
         else{
             unchecked {
