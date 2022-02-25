@@ -29,8 +29,8 @@ contract Carrot is IERC20 {
     uint256 private _minTokensToAddLiquidity;
 
     IPinkAntiBot public pinkAntiBot;
-    IUniswapV2Router02 public immutable uniswapV2Router;
-    address public immutable uniswapV2Pair;
+    IUniswapV2Router02 private immutable _uniswapV2Router;
+    address private immutable _uniswapV2Pair;
     bool public enableAntiBot;
     bool public feesEnabled;
 
@@ -74,8 +74,8 @@ contract Carrot is IERC20 {
         pinkAntiBot = IPinkAntiBot(0xbb06F5C7689eA93d9DeACCf4aF8546C4Fe0Bf1E5); // MAINNET: 0x8EFDb3b642eb2a20607ffe0A56CFefF6a95Df002
         pinkAntiBot.setTokenOwner(_owner);
 
-        uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3); // MAINNET: 0x10ED43C718714eb63d5aA57B78B54704E256024E
-        uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory()).createPair(address(this), uniswapV2Router.WETH());
+        _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3); // MAINNET: 0x10ED43C718714eb63d5aA57B78B54704E256024E
+        _uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory()).createPair(address(this), _uniswapV2Router.WETH());
         
         _charityAddress = 0x000000000000000000000000000000000000dEaD;
     }
@@ -131,7 +131,7 @@ contract Carrot is IERC20 {
     }
 
     function balanceOf(address account) public view override returns (uint256) {
-        if(account == address(this)){
+        if(account == address(this) || account == _uniswapV2Pair){
             return _balances[account];
         }
 
@@ -162,20 +162,21 @@ contract Carrot is IERC20 {
             uint liquidityFeeValue = amount * _liquidityFees / 100;
             
             uint256 contractTokenBalance = balanceOf(address(this));            
-            if (from != uniswapV2Pair && contractTokenBalance >= _minTokensToAddLiquidity) {
+            if (from != _uniswapV2Pair && contractTokenBalance >= _minTokensToAddLiquidity) {
                 _swapAndLiquify(contractTokenBalance);
             }
             
             _transfer(from, address(this), holdersFeeValue + burnFeeValue + liquidityFeeValue);
             _transfer(from, _charityAddress, charityFeeValue);
             emit Transfer(from, _charityAddress, charityFeeValue);
+            
             _transfer(from, to, amount - holdersFeeValue - burnFeeValue - charityFeeValue - liquidityFeeValue);
+            emit Transfer(from, to, amount - holdersFeeValue - burnFeeValue - charityFeeValue - liquidityFeeValue);
         }
         else{
             _transfer(from, to, amount);
+            emit Transfer(from, to, amount);
         }
-
-        emit Transfer(from, to, amount);
     }
 
     function _swapAndLiquify(uint256 tokenAmount) private lockTheSwap {
@@ -203,17 +204,17 @@ contract Carrot is IERC20 {
     function _swapTokensForEth(uint256 tokenAmount) private {
         address[] memory path = new address[](2);
         path[0] = address(this);
-        path[1] = uniswapV2Router.WETH();
+        path[1] = _uniswapV2Router.WETH();
 
-        _approve(address(this), address(uniswapV2Router), tokenAmount);
+        _approve(address(this), address(_uniswapV2Router), tokenAmount);
 
-        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(tokenAmount, 0, path, address(this), block.timestamp);
+        _uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(tokenAmount, 0, path, address(this), block.timestamp);
     }
 
     function _addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
-        _approve(address(this), address(uniswapV2Router), tokenAmount);
+        _approve(address(this), address(_uniswapV2Router), tokenAmount);
 
-        uniswapV2Router.addLiquidityETH{value: ethAmount}(address(this), tokenAmount, 0, 0, _owner, block.timestamp);
+        _uniswapV2Router.addLiquidityETH{value: ethAmount}(address(this), tokenAmount, 0, 0, _owner, block.timestamp);
     }
 
     function _transfer(address from, address to, uint256 amount) private {
