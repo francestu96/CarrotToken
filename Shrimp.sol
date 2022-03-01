@@ -22,11 +22,12 @@ interface IPinkAntiBot {
   function onPreTransferCheck(address from, address to, uint256 amount) external;
 }
 
-contract Carrot is IERC20 {
+contract Shrimp is IERC20 {
     uint256 private _totalSupply;
     string private _name;
     string private _symbol;
     uint256 private _minTokensToAddLiquidity;
+    uint256 private _minBnbToAddBuyback;
 
     IPinkAntiBot public pinkAntiBot;
     IUniswapV2Router02 private immutable _uniswapV2Router;
@@ -35,34 +36,40 @@ contract Carrot is IERC20 {
     bool public feesEnabled;
 
     bool private _inSwapAndLiquify;
+    bool private _inBuyBack;
     address private _charityAddress;
     address private _owner;
-    uint private _totalHoldersFeesAmount = 0;
-    uint private _burnFees = 1;
-    uint private _charityFees = 1;
-    uint private _holdersFees = 3;
-    uint private _liquidityFees = 3;
+    uint256 private _totalHoldersFeesAmount = 0;
+    uint8 private _buyBackFees = 1;
+    uint8 private _charityFees = 1;
+    uint8 private _holdersFees = 3;
+    uint8 private _liquidityFees = 3;
 
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
     event SwapAndLiquify(uint256 tokensSwapped, uint256 ethReceived, uint256 tokensIntoLiqudity);
+    event BuyBack(uint256 tokenBurnt);
 
     modifier onlyOwner() {
         require(_owner == msg.sender, "Ownable: caller is not the owner");
         _;
     }
-    modifier lockTheSwap {
-        _inSwapAndLiquify = true;
+    modifier lockTheSwap(bool inBuyBack) {
+        _inSwapAndLiquify = !inBuyBack;
+        _inBuyBack = inBuyBack;
         _;
-        _inSwapAndLiquify = false;
+        _inSwapAndLiquify = inBuyBack;
+        _inBuyBack = !inBuyBack;
+
     }
 
     constructor() {
-        _name = "Carrot";
-        _symbol = "CRT";
+        _name = "Shrimp";
+        _symbol = "SRP";
         _totalSupply = 10**9 * 10**decimals();
-        _minTokensToAddLiquidity = 10**6 * 10**decimals();    
+        _minTokensToAddLiquidity = 10**6 * 10**decimals();
+        _minBnbToAddBuyback = 10 * 10**18;    
         
         _owner = msg.sender;
         _balances[_owner] = _totalSupply;
@@ -71,10 +78,12 @@ contract Carrot is IERC20 {
         enableAntiBot = true;
         feesEnabled = false;
         
-        pinkAntiBot = IPinkAntiBot(0xbb06F5C7689eA93d9DeACCf4aF8546C4Fe0Bf1E5); // MAINNET: 0x8EFDb3b642eb2a20607ffe0A56CFefF6a95Df002
+        // MAINNET: 0x8EFDb3b642eb2a20607ffe0A56CFefF6a95Df002
+        pinkAntiBot = IPinkAntiBot(0xbb06F5C7689eA93d9DeACCf4aF8546C4Fe0Bf1E5); 
         pinkAntiBot.setTokenOwner(_owner);
 
-        _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3); // MAINNET: 0x10ED43C718714eb63d5aA57B78B54704E256024E
+        // MAINNET: 0x10ED43C718714eb63d5aA57B78B54704E256024E
+        _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
         _uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory()).createPair(address(this), _uniswapV2Router.WETH());
         
         _charityAddress = 0x000000000000000000000000000000000000dEaD;
@@ -153,25 +162,27 @@ contract Carrot is IERC20 {
 
 
     function _transferFeesCheck(address from, address to, uint256 amount) private {
-        if (!_inSwapAndLiquify && from != _owner){
+        if (!_inSwapAndLiquify && !_inBuyBack && from != _owner){
             uint holdersFeeValue = amount * _holdersFees / 100;
             _totalHoldersFeesAmount += holdersFeeValue;
-            uint burnFeeValue = amount * _burnFees / 100;
-            _totalSupply -= burnFeeValue;
+            uint buyBackValue = amount * _buyBackFees / 100;
             uint charityFeeValue = amount * _charityFees / 100;
             uint liquidityFeeValue = amount * _liquidityFees / 100;
             
             uint256 contractTokenBalance = balanceOf(address(this));            
-            if (from != _uniswapV2Pair && contractTokenBalance >= _minTokensToAddLiquidity) {
+            if (from != _uniswapV2Pair && contractTokenBalance >= _minTokensToAddLiquidity)
                 _swapAndLiquify(contractTokenBalance);
-            }
-            
-            _transfer(from, address(this), holdersFeeValue + burnFeeValue + liquidityFeeValue);
+
+            if(IERC20(_uniswapV2Router.WETH()).balanceOf(_uniswapV2Pair) > _minBnbToAddBuyback)
+                _buyBack();
+
+            _swapTokensForEth(buyBackValue);            
+            _transfer(from, address(this), holdersFeeValue + liquidityFeeValue);
             _transfer(from, _charityAddress, charityFeeValue);
             emit Transfer(from, _charityAddress, charityFeeValue);
             
-            _transfer(from, to, amount - holdersFeeValue - burnFeeValue - charityFeeValue - liquidityFeeValue);
-            emit Transfer(from, to, amount - holdersFeeValue - burnFeeValue - charityFeeValue - liquidityFeeValue);
+            _transfer(from, to, amount - holdersFeeValue - buyBackValue - charityFeeValue - liquidityFeeValue);
+            emit Transfer(from, to, amount - holdersFeeValue - buyBackValue - charityFeeValue - liquidityFeeValue);
         }
         else{
             _transfer(from, to, amount);
@@ -179,7 +190,7 @@ contract Carrot is IERC20 {
         }
     }
 
-    function _swapAndLiquify(uint256 tokenAmount) private lockTheSwap {
+    function _swapAndLiquify(uint256 tokenAmount) private lockTheSwap(false) {
         uint256 half;
         uint256 otherHalf;
         uint256 newBalance;
@@ -201,7 +212,7 @@ contract Carrot is IERC20 {
         emit SwapAndLiquify(half, newBalance, otherHalf);
     }
 
-    function _swapTokensForEth(uint256 tokenAmount) private {
+    function _swapTokensForEth(uint256 tokenAmount) private lockTheSwap(true) {
         address[] memory path = new address[](2);
         path[0] = address(this);
         path[1] = _uniswapV2Router.WETH();
@@ -215,6 +226,27 @@ contract Carrot is IERC20 {
         _approve(address(this), address(_uniswapV2Router), tokenAmount);
 
         _uniswapV2Router.addLiquidityETH{value: ethAmount}(address(this), tokenAmount, 0, 0, _owner, block.timestamp);
+    }
+
+    function _buyBack() private lockTheSwap(true) {
+        uint256 newBalance;
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = _uniswapV2Router.WETH();
+
+        uint256 initialBalance = address(this).balance;
+
+        _approve(address(this), address(_uniswapV2Router), initialBalance);
+        _uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens(0, path, address(this), block.timestamp);
+
+        unchecked{
+            newBalance = address(this).balance - initialBalance;
+        }
+
+        _transfer(address(this), 0x000000000000000000000000000000000000dEaD, newBalance);
+        _totalSupply -= newBalance;
+
+        emit BuyBack(newBalance);
     }
 
     function _transfer(address from, address to, uint256 amount) private {

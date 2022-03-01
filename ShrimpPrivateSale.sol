@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity = 0.8.12;
 
-interface ICarrot {
+interface IShrimp {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
-contract CarrotPrivateSale {
+contract ShrimpPrivateSale {
     uint constant private _min = 10**14; 
     uint constant private _max = 10**18; 
     uint constant private _totalMax = 25 * 10**18;
@@ -13,21 +13,21 @@ contract CarrotPrivateSale {
     uint public totalReceived = 0;
     address[] public senders;
 
-    ICarrot private _carrot; 
+    IShrimp private _shrimp; 
     mapping(address => uint256) public amounts;
     event ValueReceived(address user, uint amount);
 
-    constructor(address carrotAddress) {
+    constructor(address shrimpAddress) {
         _owner = msg.sender;
-        _carrot = ICarrot(carrotAddress);
+        _shrimp = IShrimp(shrimpAddress);
     }
 
-    function transferCarrot() public {
+    function transferShrimp() public {
         require(msg.sender == _owner, "Ownable: caller is not the owner!");
 
         // 1 * 10**18 BNB = 0.0001 * 10**2 CRT
         for(uint i = 0; i < senders.length; i++){
-            _carrot.transferFrom(_owner, senders[i], amounts[senders[i]] / (10**14));
+            _shrimp.transferFrom(_owner, senders[i], amounts[senders[i]] / (10**14));
         }
     }
 

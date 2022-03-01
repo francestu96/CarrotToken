@@ -715,13 +715,13 @@ contract SafeMoon is Context, IERC20, Ownable {
     address[] private _excluded;
    
     uint256 private constant MAX = ~uint256(0);
-    uint256 private _tTotal = 1000000000 * 10**6 * 10**9;
+    uint256 private _tTotal = 10**9 * 10**2;
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
     string private _name = "SafeMoon";
     string private _symbol = "SAFEMOON";
-    uint8 private _decimals = 9;
+    uint8 private _decimals = 2;
     
     uint256 public _taxFee = 5;
     uint256 private _previousTaxFee = _taxFee;
@@ -735,9 +735,9 @@ contract SafeMoon is Context, IERC20, Ownable {
     bool inSwapAndLiquify;
     bool public swapAndLiquifyEnabled = true;
     
-    uint256 public _maxTxAmount = 5000000 * 10**6 * 10**9;
-    uint256 private numTokensSellToAddToLiquidity = 500000 * 10**6 * 10**9;
-    
+    uint256 public _maxTxAmount = 10**6 * 10**2;
+    uint256 private numTokensSellToAddToLiquidity = 10**5 * 10**2;
+
     event MinTokensBeforeSwapUpdated(uint256 minTokensBeforeSwap);
     event SwapAndLiquifyEnabledUpdated(bool enabled);
     event SwapAndLiquify(
