@@ -4,7 +4,7 @@ pragma solidity = 0.8.12;
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 
-interface IERC20 {
+interface IBEP20 {
     function totalSupply() view external returns (uint256);
     function balanceOf(address account) view external returns (uint256);
     function allowance(address owner, address spender) view external returns (uint256);
@@ -22,7 +22,7 @@ interface IPinkAntiBot {
   function onPreTransferCheck(address from, address to, uint256 amount) external;
 }
 
-contract Shrimp is IERC20 {
+contract Shrimp is IBEP20 {
     uint256 private _totalSupply;
     string private _name;
     string private _symbol;
@@ -33,17 +33,17 @@ contract Shrimp is IERC20 {
     IUniswapV2Router02 private immutable _uniswapV2Router;
     address private immutable _uniswapV2Pair;
     bool public enableAntiBot;
-    bool public feesEnabled;
 
     bool private _inSwapAndLiquify;
-    bool private _inBuyBack;
+    bool private _inSwapTokenForETH;
     address private _charityAddress;
     address private _owner;
-    uint256 private _totalHoldersFeesAmount = 0;
-    uint8 private _buyBackFees = 1;
-    uint8 private _charityFees = 1;
-    uint8 private _holdersFees = 3;
-    uint8 private _liquidityFees = 3;
+    uint256 public totalHoldersFeesAmount = 0;
+    uint256 public totalBuyBackFeesAmount = 0;
+    uint256 public totalLiquidityFeesAmount = 0;
+    uint8 private _holdersFees = 10;
+    uint8 private _buyBackFees = 10;
+    uint8 private _liquidityFees = 10;
 
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
@@ -55,12 +55,16 @@ contract Shrimp is IERC20 {
         require(_owner == msg.sender, "Ownable: caller is not the owner");
         _;
     }
-    modifier lockTheSwap(bool inBuyBack) {
-        _inSwapAndLiquify = !inBuyBack;
-        _inBuyBack = inBuyBack;
+    modifier lockSwapTokenForETH {
+        _inSwapTokenForETH = true;
         _;
-        _inSwapAndLiquify = inBuyBack;
-        _inBuyBack = !inBuyBack;
+        _inSwapTokenForETH = false;
+
+    }
+    modifier lockTheSwap {
+        _inSwapAndLiquify = true;
+        _;
+        _inSwapAndLiquify = false;
 
     }
 
@@ -69,14 +73,13 @@ contract Shrimp is IERC20 {
         _symbol = "SRP";
         _totalSupply = 10**9 * 10**decimals();
         _minTokensToAddLiquidity = 10**6 * 10**decimals();
-        _minBnbToAddBuyback = 10 * 10**18;    
-        
+        _minBnbToAddBuyback = 1 * 10**15;    
+
         _owner = msg.sender;
         _balances[_owner] = _totalSupply;
         emit Transfer(address(0), _owner, _totalSupply);
 
         enableAntiBot = true;
-        feesEnabled = false;
         
         // MAINNET: 0x8EFDb3b642eb2a20607ffe0A56CFefF6a95Df002
         pinkAntiBot = IPinkAntiBot(0xbb06F5C7689eA93d9DeACCf4aF8546C4Fe0Bf1E5); 
@@ -102,7 +105,7 @@ contract Shrimp is IERC20 {
     function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
         uint256 currentAllowance = allowance(from, msg.sender);
         if (currentAllowance != type(uint256).max) {
-            require(currentAllowance >= amount, "ERC20: insufficient allowance");
+            require(currentAllowance >= amount, "BEP20: insufficient allowance");
             unchecked {
                 _approve(from, msg.sender, currentAllowance - amount);
             }
@@ -145,16 +148,13 @@ contract Shrimp is IERC20 {
         }
 
         uint accountPerm = _balances[account] * 1000 / _totalSupply;
-        return _balances[account] + (_totalHoldersFeesAmount * accountPerm / 1000);
+        return _balances[account] + (totalHoldersFeesAmount * accountPerm / 1000);
     }
 
     function totalSupply() public view virtual override returns (uint256) {
         return _totalSupply;
     }
 
-    function setFeesEnabled(bool enable) public onlyOwner {
-        feesEnabled = enable;
-    }
 
     function setEnableAntiBot(bool enable) external onlyOwner {
         enableAntiBot = enable;
@@ -162,27 +162,32 @@ contract Shrimp is IERC20 {
 
 
     function _transferFeesCheck(address from, address to, uint256 amount) private {
-        if (!_inSwapAndLiquify && !_inBuyBack && from != _owner){
+        if (!(_inSwapAndLiquify || _inSwapTokenForETH) && from != _owner){           
             uint holdersFeeValue = amount * _holdersFees / 100;
-            _totalHoldersFeesAmount += holdersFeeValue;
             uint buyBackValue = amount * _buyBackFees / 100;
-            uint charityFeeValue = amount * _charityFees / 100;
             uint liquidityFeeValue = amount * _liquidityFees / 100;
+            totalHoldersFeesAmount += holdersFeeValue;
+            totalBuyBackFeesAmount += buyBackValue;
+            totalLiquidityFeesAmount += liquidityFeeValue;
             
             uint256 contractTokenBalance = balanceOf(address(this));            
-            if (from != _uniswapV2Pair && contractTokenBalance >= _minTokensToAddLiquidity)
-                _swapAndLiquify(contractTokenBalance);
+            if (from != _uniswapV2Pair) {
+                if(contractTokenBalance >= _minTokensToAddLiquidity){
+                    _swapAndLiquify(totalLiquidityFeesAmount);
+                    totalLiquidityFeesAmount = 0;
+                }
 
-            if(IERC20(_uniswapV2Router.WETH()).balanceOf(_uniswapV2Pair) > _minBnbToAddBuyback)
-                _buyBack();
+                if(IBEP20(_uniswapV2Router.WETH()).balanceOf(_uniswapV2Pair) < _minBnbToAddBuyback)
+                    _buyBackAndBurn();
 
-            _swapTokensForEth(buyBackValue);            
-            _transfer(from, address(this), holdersFeeValue + liquidityFeeValue);
-            _transfer(from, _charityAddress, charityFeeValue);
-            emit Transfer(from, _charityAddress, charityFeeValue);
-            
-            _transfer(from, to, amount - holdersFeeValue - buyBackValue - charityFeeValue - liquidityFeeValue);
-            emit Transfer(from, to, amount - holdersFeeValue - buyBackValue - charityFeeValue - liquidityFeeValue);
+                _transfer(from, address(this), holdersFeeValue + buyBackValue + liquidityFeeValue);
+                _swapTokensForEth(totalBuyBackFeesAmount);   
+                totalBuyBackFeesAmount = 0;
+            }   
+
+            _transfer(from, address(this), liquidityFeeValue);
+            _transfer(from, to, amount - holdersFeeValue - buyBackValue - liquidityFeeValue);
+            emit Transfer(from, to, amount - holdersFeeValue - buyBackValue - liquidityFeeValue);
         }
         else{
             _transfer(from, to, amount);
@@ -190,7 +195,7 @@ contract Shrimp is IERC20 {
         }
     }
 
-    function _swapAndLiquify(uint256 tokenAmount) private lockTheSwap(false) {
+    function _swapAndLiquify(uint256 tokenAmount) private lockTheSwap {
         uint256 half;
         uint256 otherHalf;
         uint256 newBalance;
@@ -212,7 +217,7 @@ contract Shrimp is IERC20 {
         emit SwapAndLiquify(half, newBalance, otherHalf);
     }
 
-    function _swapTokensForEth(uint256 tokenAmount) private lockTheSwap(true) {
+    function _swapTokensForEth(uint256 tokenAmount) private lockSwapTokenForETH {
         address[] memory path = new address[](2);
         path[0] = address(this);
         path[1] = _uniswapV2Router.WETH();
@@ -228,7 +233,7 @@ contract Shrimp is IERC20 {
         _uniswapV2Router.addLiquidityETH{value: ethAmount}(address(this), tokenAmount, 0, 0, _owner, block.timestamp);
     }
 
-    function _buyBack() private lockTheSwap(true) {
+    function _buyBackAndBurn() private lockTheSwap {
         uint256 newBalance;
         address[] memory path = new address[](2);
         path[0] = address(this);
@@ -237,30 +242,30 @@ contract Shrimp is IERC20 {
         uint256 initialBalance = address(this).balance;
 
         _approve(address(this), address(_uniswapV2Router), initialBalance);
-        _uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens(0, path, address(this), block.timestamp);
+        _uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: initialBalance}(0, path, address(this), block.timestamp);
 
         unchecked{
             newBalance = address(this).balance - initialBalance;
         }
 
-        _transfer(address(this), 0x000000000000000000000000000000000000dEaD, newBalance);
+        _transfer(address(this), address(0), newBalance);
         _totalSupply -= newBalance;
 
         emit BuyBack(newBalance);
     }
 
     function _transfer(address from, address to, uint256 amount) private {
-        require(from != address(0), "ERC20: transfer from the zero address");
-        require(balanceOf(from) >= amount, "ERC20: transfer amount exceeds balance");
+        require(from != address(0), "BEP20: transfer from the zero address");
+        require(balanceOf(from) >= amount, "BEP20: transfer amount exceeds balance");
 
         if(_balances[from] < amount){
             unchecked{
                 _balances[from] = balanceOf(from) - amount;
-                _totalHoldersFeesAmount -= amount - _balances[from];
+                totalHoldersFeesAmount -= amount - _balances[from];
             }
         }
         else{
-            unchecked {
+            unchecked{
                 _balances[from] -= amount;
             }
         }
@@ -269,8 +274,8 @@ contract Shrimp is IERC20 {
     }
 
     function _approve(address owner, address spender, uint256 amount) private {
-        require(owner != address(0), "ERC20: approve from the zero address");
-        require(spender != address(0), "ERC20: approve to the zero address");
+        require(owner != address(0), "BEP20: approve from the zero address");
+        require(spender != address(0), "BEP20: approve to the zero address");
 
         _allowances[owner][spender] = amount;
         emit Approval(owner, spender, amount);
