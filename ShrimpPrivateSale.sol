@@ -17,23 +17,24 @@ contract ShrimpPrivateSale {
     mapping(address => uint256) public amounts;
     event ValueReceived(address user, uint amount);
 
+    modifier onlyOwner() {
+        require(_owner == msg.sender, "Ownable: caller is not the owner");
+        _;
+    }
+
     constructor(address shrimpAddress) {
         _owner = msg.sender;
         _shrimp = IShrimp(shrimpAddress);
     }
 
-    function transferShrimp() public {
-        require(msg.sender == _owner, "Ownable: caller is not the owner!");
-
+    function transferShrimp() public onlyOwner {
         // 1 * 10**18 BNB = 0.0001 * 10**2 CRT
         for(uint i = 0; i < senders.length; i++){
             _shrimp.transferFrom(_owner, senders[i], amounts[senders[i]] / (10**14));
         }
     }
 
-    function withdraw() public {
-        require(msg.sender == _owner, "Ownable: caller is not the owner!");
-
+    function withdraw() public onlyOwner {
         bool sent = payable(_owner).send(address(this).balance);
         require(sent, "Failed to send Ether");
     }

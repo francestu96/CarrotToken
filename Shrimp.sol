@@ -36,20 +36,16 @@ contract Shrimp is IBEP20 {
 
     bool private _inSwapAndLiquify;
     bool private _inSwapTokenForETH;
-    address private _charityAddress;
     address private _owner;
     uint256 public totalHoldersFeesAmount = 0;
     uint256 public totalBuyBackFeesAmount = 0;
     uint256 public totalLiquidityFeesAmount = 0;
-    uint8 private _holdersFees = 10;
-    uint8 private _buyBackFees = 10;
-    uint8 private _liquidityFees = 10;
+    uint8 private _holdersFees = 3;
+    uint8 private _buyBackFees = 3;
+    uint8 private _liquidityFees = 2;
 
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
-
-    event SwapAndLiquify(uint256 tokensSwapped, uint256 ethReceived, uint256 tokensIntoLiqudity);
-    event BuyBack(uint256 tokenBurnt);
 
     modifier onlyOwner() {
         require(_owner == msg.sender, "Ownable: caller is not the owner");
@@ -72,8 +68,8 @@ contract Shrimp is IBEP20 {
         _name = "Shrimp";
         _symbol = "SRP";
         _totalSupply = 10**9 * 10**decimals();
-        _minTokensToAddLiquidity = 10**6 * 10**decimals();
-        _minBnbToAddBuyback = 1 * 10**15;    
+        _minTokensToAddLiquidity = 5**6 * 10**decimals();
+        _minBnbToAddBuyback = 10 * 10**18;    
 
         _owner = msg.sender;
         _balances[_owner] = _totalSupply;
@@ -88,8 +84,6 @@ contract Shrimp is IBEP20 {
         // MAINNET: 0x10ED43C718714eb63d5aA57B78B54704E256024E
         _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
         _uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory()).createPair(address(this), _uniswapV2Router.WETH());
-        
-        _charityAddress = 0x000000000000000000000000000000000000dEaD;
     }
 
 
@@ -118,6 +112,10 @@ contract Shrimp is IBEP20 {
     function approvePrivateSale(address privateSale) public onlyOwner returns (bool) {
         _approve(msg.sender, privateSale, _totalSupply);
         return true;
+    }
+
+    function SetMinBnbToAddBuyback(uint256 value) public onlyOwner {
+        _minBnbToAddBuyback = value;
     }
 
     function approve(address spender, uint256 amount) public override returns (bool) {
@@ -162,30 +160,34 @@ contract Shrimp is IBEP20 {
 
 
     function _transferFeesCheck(address from, address to, uint256 amount) private {
-        if (!(_inSwapAndLiquify || _inSwapTokenForETH) && from != _owner){           
-            uint holdersFeeValue = amount * _holdersFees / 100;
-            uint buyBackValue = amount * _buyBackFees / 100;
-            uint liquidityFeeValue = amount * _liquidityFees / 100;
-            totalHoldersFeesAmount += holdersFeeValue;
-            totalBuyBackFeesAmount += buyBackValue;
-            totalLiquidityFeesAmount += liquidityFeeValue;
+        uint256 holdersFeeValue = 0;
+        uint256 buyBackValue = 0;
+        uint256 liquidityFeeValue = 0;
+
+        if (!(_inSwapAndLiquify || _inSwapTokenForETH) && from != _owner){       
+            unchecked{
+                holdersFeeValue = amount * _holdersFees / 100;
+                buyBackValue = amount * _buyBackFees / 100;
+                liquidityFeeValue = amount * _liquidityFees / 100;
+                totalHoldersFeesAmount += holdersFeeValue;
+                totalBuyBackFeesAmount += buyBackValue;
+                totalLiquidityFeesAmount += liquidityFeeValue;
+            }    
             
-            uint256 contractTokenBalance = balanceOf(address(this));            
             if (from != _uniswapV2Pair) {
-                if(contractTokenBalance >= _minTokensToAddLiquidity){
-                    _swapAndLiquify(totalLiquidityFeesAmount);
-                    totalLiquidityFeesAmount = 0;
+                if(totalLiquidityFeesAmount >= _minTokensToAddLiquidity){
+                    if(_swapAndLiquify(totalLiquidityFeesAmount))
+                        totalLiquidityFeesAmount = 0;
                 }
 
                 if(IBEP20(_uniswapV2Router.WETH()).balanceOf(_uniswapV2Pair) < _minBnbToAddBuyback)
                     _buyBackAndBurn();
 
-                _transfer(from, address(this), holdersFeeValue + buyBackValue + liquidityFeeValue);
-                _swapTokensForEth(totalBuyBackFeesAmount);   
-                totalBuyBackFeesAmount = 0;
+                if(_swapTokensForEth(totalBuyBackFeesAmount))
+                    totalBuyBackFeesAmount = 0;
             }   
 
-            _transfer(from, address(this), liquidityFeeValue);
+            _transfer(from, address(this), holdersFeeValue + buyBackValue + liquidityFeeValue);
             _transfer(from, to, amount - holdersFeeValue - buyBackValue - liquidityFeeValue);
             emit Transfer(from, to, amount - holdersFeeValue - buyBackValue - liquidityFeeValue);
         }
@@ -195,7 +197,7 @@ contract Shrimp is IBEP20 {
         }
     }
 
-    function _swapAndLiquify(uint256 tokenAmount) private lockTheSwap {
+    function _swapAndLiquify(uint256 tokenAmount) private lockTheSwap returns(bool){
         uint256 half;
         uint256 otherHalf;
         uint256 newBalance;
@@ -206,34 +208,44 @@ contract Shrimp is IBEP20 {
         }
 
         uint256 initialBalance = address(this).balance;
-        _swapTokensForEth(half);
+        if (_swapTokensForEth(half)){
+            unchecked{
+                newBalance = address(this).balance - initialBalance;
+            }
 
-        unchecked{
-            newBalance = address(this).balance - initialBalance;
+            return _addLiquidity(otherHalf, newBalance);
         }
 
-        _addLiquidity(otherHalf, newBalance);
-        
-        emit SwapAndLiquify(half, newBalance, otherHalf);
+        return false;
     }
 
-    function _swapTokensForEth(uint256 tokenAmount) private lockSwapTokenForETH {
+    function _swapTokensForEth(uint256 tokenAmount) private lockSwapTokenForETH returns(bool){
         address[] memory path = new address[](2);
         path[0] = address(this);
         path[1] = _uniswapV2Router.WETH();
 
         _approve(address(this), address(_uniswapV2Router), tokenAmount);
 
-        _uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(tokenAmount, 0, path, address(this), block.timestamp);
+        try _uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(tokenAmount, 0, path, address(this), block.timestamp){
+            return true;
+        }
+        catch {
+            return false;
+        }
     }
 
-    function _addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
+    function _addLiquidity(uint256 tokenAmount, uint256 ethAmount) private returns(bool){
         _approve(address(this), address(_uniswapV2Router), tokenAmount);
 
-        _uniswapV2Router.addLiquidityETH{value: ethAmount}(address(this), tokenAmount, 0, 0, _owner, block.timestamp);
+        try _uniswapV2Router.addLiquidityETH{value: ethAmount}(address(this), tokenAmount, 0, 0, _owner, block.timestamp){
+            return true;
+        }
+        catch {
+            return false;
+        }
     }
 
-    function _buyBackAndBurn() private lockTheSwap {
+    function _buyBackAndBurn() private lockTheSwap returns(bool){
         uint256 newBalance;
         address[] memory path = new address[](2);
         path[0] = address(this);
@@ -242,16 +254,19 @@ contract Shrimp is IBEP20 {
         uint256 initialBalance = address(this).balance;
 
         _approve(address(this), address(_uniswapV2Router), initialBalance);
-        _uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: initialBalance}(0, path, address(this), block.timestamp);
+        try _uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: initialBalance}(0, path, address(this), block.timestamp){
+            unchecked{
+                newBalance = address(this).balance - initialBalance;
+            }
 
-        unchecked{
-            newBalance = address(this).balance - initialBalance;
+            _transfer(address(this), address(0), newBalance);
+            _totalSupply -= newBalance;
+
+            return true;
         }
-
-        _transfer(address(this), address(0), newBalance);
-        _totalSupply -= newBalance;
-
-        emit BuyBack(newBalance);
+        catch {
+            return false;
+        }
     }
 
     function _transfer(address from, address to, uint256 amount) private {
