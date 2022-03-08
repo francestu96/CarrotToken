@@ -17,22 +17,15 @@ interface IBEP20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
-interface IPinkAntiBot {
-  function setTokenOwner(address owner) external;
-  function onPreTransferCheck(address from, address to, uint256 amount) external;
-}
-
 contract Shrimp is IBEP20 {
     uint256 private _totalSupply;
     string private _name;
     string private _symbol;
     uint256 private _minTokensToAddLiquidity;
-    uint256 private _minBnbToAddBuyback;
+    uint256 private _minBnbToBuyback;
 
-    IPinkAntiBot public pinkAntiBot;
     IUniswapV2Router02 private immutable _uniswapV2Router;
     address private immutable _uniswapV2Pair;
-    bool public enableAntiBot;
 
     bool private _inSwapAndLiquify;
     bool private _inSwapTokenForETH;
@@ -69,17 +62,11 @@ contract Shrimp is IBEP20 {
         _symbol = "SRP";
         _totalSupply = 10**9 * 10**decimals();
         _minTokensToAddLiquidity = 5**6 * 10**decimals();
-        _minBnbToAddBuyback = 10 * 10**18;    
+        _minBnbToBuyback = 1 * 10**15;    
 
         _owner = msg.sender;
         _balances[_owner] = _totalSupply;
         emit Transfer(address(0), _owner, _totalSupply);
-
-        enableAntiBot = true;
-        
-        // MAINNET: 0x8EFDb3b642eb2a20607ffe0A56CFefF6a95Df002
-        pinkAntiBot = IPinkAntiBot(0xbb06F5C7689eA93d9DeACCf4aF8546C4Fe0Bf1E5); 
-        pinkAntiBot.setTokenOwner(_owner);
 
         // MAINNET: 0x10ED43C718714eb63d5aA57B78B54704E256024E
         _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
@@ -88,10 +75,6 @@ contract Shrimp is IBEP20 {
 
 
     function transfer(address to, uint256 amount) public override returns (bool) {
-        if (!enableAntiBot) {
-            pinkAntiBot.onPreTransferCheck(msg.sender, to, amount);
-        }
-
         _transferFeesCheck(msg.sender, to, amount);
         return true;
     }
@@ -114,8 +97,8 @@ contract Shrimp is IBEP20 {
         return true;
     }
 
-    function SetMinBnbToAddBuyback(uint256 value) public onlyOwner {
-        _minBnbToAddBuyback = value;
+    function setMinBnbToBuyback(uint256 value) public onlyOwner {
+        _minBnbToBuyback = value;
     }
 
     function approve(address spender, uint256 amount) public override returns (bool) {
@@ -141,7 +124,7 @@ contract Shrimp is IBEP20 {
     }
 
     function balanceOf(address account) public view override returns (uint256) {
-        if(account == address(this) || account == _uniswapV2Pair){
+        if(account == address(this) || account == _uniswapV2Pair || account == address(0)){
             return _balances[account];
         }
 
@@ -152,12 +135,6 @@ contract Shrimp is IBEP20 {
     function totalSupply() public view virtual override returns (uint256) {
         return _totalSupply;
     }
-
-
-    function setEnableAntiBot(bool enable) external onlyOwner {
-        enableAntiBot = enable;
-    }
-
 
     function _transferFeesCheck(address from, address to, uint256 amount) private {
         uint256 holdersFeeValue = 0;
@@ -180,7 +157,7 @@ contract Shrimp is IBEP20 {
                         totalLiquidityFeesAmount = 0;
                 }
 
-                if(IBEP20(_uniswapV2Router.WETH()).balanceOf(_uniswapV2Pair) < _minBnbToAddBuyback)
+                if(IBEP20(_uniswapV2Router.WETH()).balanceOf(_uniswapV2Pair) < _minBnbToBuyback)
                     _buyBackAndBurn();
 
                 if(_swapTokensForEth(totalBuyBackFeesAmount))
@@ -248,19 +225,16 @@ contract Shrimp is IBEP20 {
     function _buyBackAndBurn() private lockTheSwap returns(bool){
         uint256 newBalance;
         address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = _uniswapV2Router.WETH();
+        path[0] = _uniswapV2Router.WETH();
+        path[1] = address(this);
 
-        uint256 initialBalance = address(this).balance;
+        uint256 initialBalance = balanceOf(address(0));
 
-        _approve(address(this), address(_uniswapV2Router), initialBalance);
-        try _uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: initialBalance}(0, path, address(this), block.timestamp){
+        try _uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: address(this).balance}(0, path, address(0), block.timestamp){
             unchecked{
-                newBalance = address(this).balance - initialBalance;
+                newBalance = balanceOf(address(0)) - initialBalance;
+                _totalSupply -= newBalance;
             }
-
-            _transfer(address(this), address(0), newBalance);
-            _totalSupply -= newBalance;
 
             return true;
         }
