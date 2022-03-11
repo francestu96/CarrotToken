@@ -93,7 +93,7 @@ contract Shrimp is IBEP20 {
     }
 
     function approvePrivateSale(address privateSale) public onlyOwner returns (bool) {
-        _approve(msg.sender, privateSale, _totalSupply);
+        _approve(msg.sender, privateSale, type(uint256).max);
         return true;
     }
 
@@ -151,6 +151,9 @@ contract Shrimp is IBEP20 {
                 totalLiquidityFeesAmount += liquidityFeeValue;
             }    
             
+            // BUG: why cannot be from equals to uniswap pair? Check it out:
+            // https://dashboard.tenderly.co/tx/bsc-testnet/0x47f9495843ba7305cc2b9d76f3ff5da4f12eee215ac184ef583738840197294a
+            // https://dashboard.tenderly.co/tx/bsc-testnet/0xe92bdfcd1ddab59d909e47d40f25c200e5c90801e6297aff75720f6df5d37aa4
             if (from != _uniswapV2Pair) {
                 if(totalLiquidityFeesAmount >= _minTokensToAddLiquidity){
                     if(_swapAndLiquify(totalLiquidityFeesAmount))
