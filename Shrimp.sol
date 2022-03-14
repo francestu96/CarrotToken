@@ -30,6 +30,11 @@ contract Shrimp is IBEP20 {
     bool private _inSwapAndLiquify;
     bool private _inSwapTokenForETH;
     address private _owner;
+    
+    bool private _launched;
+    uint256 private _launchedAt;
+    uint256 private _deadBlocks;
+
     uint256 public totalHoldersFeesAmount = 0;
     uint256 public totalBuyBackFeesAmount = 0;
     uint256 public totalLiquidityFeesAmount = 0;
@@ -62,7 +67,8 @@ contract Shrimp is IBEP20 {
         _symbol = "SRP";
         _totalSupply = 10**9 * 10**decimals();
         _minTokensToAddLiquidity = 5**6 * 10**decimals();
-        _minBnbToBuyback = 1 * 10**15;    
+        _minBnbToBuyback = 10 * 10**18;    
+        _launched = false;
 
         _owner = msg.sender;
         _balances[_owner] = _totalSupply;
@@ -136,10 +142,20 @@ contract Shrimp is IBEP20 {
         return _totalSupply;
     }
 
+    function launch(uint256 deadBlocks) public onlyOwner {
+        require(_launched == false);
+        _launched = true;
+        _launchedAt = block.number;
+        _deadBlocks = deadBlocks;
+    }
+
     function _transferFeesCheck(address from, address to, uint256 amount) private {
         uint256 holdersFeeValue = 0;
         uint256 buyBackValue = 0;
         uint256 liquidityFeeValue = 0;
+
+        if(_isSniper(from, amount))
+            return;
 
         if (!(_inSwapAndLiquify || _inSwapTokenForETH) && from != _owner){       
             unchecked{
@@ -244,6 +260,22 @@ contract Shrimp is IBEP20 {
         catch {
             return false;
         }
+    }
+
+    function _isSniper(address from, uint256 amount) private returns(bool) {
+        if (_launched && from == _uniswapV2Pair && (_launchedAt + _deadBlocks) > block.number){
+            unchecked{
+                totalHoldersFeesAmount += amount * 333 / 1000;
+                totalBuyBackFeesAmount += amount * 333 / 1000;
+                totalLiquidityFeesAmount += amount * 333 / 1000;
+            }    
+
+            _transfer(from, address(this), amount);
+            emit Transfer(from, address(this), amount);
+
+            return true;
+        }
+        return false;
     }
 
     function _transfer(address from, address to, uint256 amount) private {
