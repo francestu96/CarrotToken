@@ -158,14 +158,12 @@ contract BlackApe is IBEP20 {
             return;
 
         if (!(_inSwapAndLiquify || _inSwapTokenForETH) && from != _owner){       
-            unchecked{
-                holdersFeeValue = amount * _holdersFees / 100;
-                buyBackValue = amount * _buyBackFees / 100;
-                liquidityFeeValue = amount * _liquidityFees / 100;
-                totalHoldersFeesAmount += holdersFeeValue;
-                totalBuyBackFeesAmount += buyBackValue;
-                totalLiquidityFeesAmount += liquidityFeeValue;
-            }    
+            holdersFeeValue = amount * _holdersFees / 100;
+            buyBackValue = amount * _buyBackFees / 100;
+            liquidityFeeValue = amount * _liquidityFees / 100;
+            totalHoldersFeesAmount += holdersFeeValue;
+            totalBuyBackFeesAmount += buyBackValue;
+            totalLiquidityFeesAmount += liquidityFeeValue;
             
             // BUG: why cannot be from equals to uniswap pair? Check it out:
             // https://dashboard.tenderly.co/tx/bsc-testnet/0x47f9495843ba7305cc2b9d76f3ff5da4f12eee215ac184ef583738840197294a
@@ -264,11 +262,9 @@ contract BlackApe is IBEP20 {
 
     function _isSniper(address from, uint256 amount) private returns(bool) {
         if (_launched && from == _uniswapV2Pair && (_launchedAt + _deadBlocks) > block.number){
-            unchecked{
-                totalHoldersFeesAmount += amount * 333 / 1000;
-                totalBuyBackFeesAmount += amount * 333 / 1000;
-                totalLiquidityFeesAmount += amount * 333 / 1000;
-            }    
+            totalHoldersFeesAmount += amount / 3;
+            totalBuyBackFeesAmount += amount / 3;
+            totalLiquidityFeesAmount += amount / 3;
 
             _transfer(from, address(this), amount);
             emit Transfer(from, address(this), amount);

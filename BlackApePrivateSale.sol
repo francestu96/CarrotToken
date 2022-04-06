@@ -58,7 +58,7 @@ contract BlackApePrivateSale {
         }
         require(whitelisted, "You are not in White List!");
         require(msg.value >= _min && msg.value <= _max, "Amount is not in the accepted range");
-        require(_amounts[msg.sender] + msg.value > _max, "Amount exceed the maximum accepted value");
+        require(_amounts[msg.sender] + msg.value <= _max, "Amount exceed the maximum accepted value");
         require(_totalReceived + msg.value <= _totalMax, "Amount exceed the maximum Private Sale value");
 
         _totalReceived += msg.value;
