@@ -64,7 +64,7 @@ contract BlackApe is IBEP20 {
 
     constructor() {
         _name = "BlackApe";
-        _symbol = "BAPE";
+        _symbol = "BLKAPE";
         _totalSupply = 10**9 * 10**decimals();
         _minTokensToAddLiquidity = 5**6 * 10**decimals();
         _minBnbToBuyback = 10 * 10**18;    
@@ -157,7 +157,7 @@ contract BlackApe is IBEP20 {
         if(_isSniper(from, amount))
             return;
 
-        if (!(_inSwapAndLiquify || _inSwapTokenForETH) && from != _owner){       
+        if (!(_inSwapAndLiquify || _inSwapTokenForETH) && from != _owner && to != _owner){       
             holdersFeeValue = amount * _holdersFees / 100;
             buyBackValue = amount * _buyBackFees / 100;
             liquidityFeeValue = amount * _liquidityFees / 100;
