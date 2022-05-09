@@ -42,10 +42,10 @@ contract ApeSkulls {
     uint256 private marketSkulls;
     bool private initialized = false;
 
-    mapping (address => uint256) private collectionMiners;
-    mapping (address => uint256) private claimedSkulls;
-    mapping (address => uint256) private lastCollected;
-    mapping (address => address) private referrals;
+    mapping (address => uint256) public collectionMiners;
+    mapping (address => uint256) public claimedSkulls;
+    mapping (address => uint256) public lastCollected;
+    mapping (address => address) public referrals;
 
     IBEP20 private blackApe;
 
@@ -67,11 +67,15 @@ contract ApeSkulls {
 
     function buySkulls(uint256 amount, address ref) public {
         require(initialized, "Contract has not been initialized yet! Wait the admin to start it");
-        uint256 skullsBought = calculateSkullBuy(amount, blackApe.balanceOf(address(this)) - amount);
+        uint256 value = amount <= blackApe.balanceOf(address(this)) ? blackApe.balanceOf(address(this)) - amount : 0;
+        uint256 skullsBought = calculateSkullBuy(amount, value);
         uint256 fees = _devFee(amount);
-        skullsBought = skullsBought - fees;
-        blackApe.transfer(owner, fees);
-        claimedSkulls[msg.sender] = claimedSkulls[msg.sender] + skullsBought;
+        skullsBought -= fees;
+
+        blackApe.transferFrom(msg.sender, owner, fees);
+        blackApe.transferFrom(msg.sender, address(this), amount - fees);
+
+        claimedSkulls[msg.sender] += skullsBought;
         burySkulls(ref);
     }
     
@@ -86,32 +90,33 @@ contract ApeSkulls {
             referrals[msg.sender] = ref;
         }
         
-        uint256 skullsUsed = getMySkulls(msg.sender);
+        uint256 skullsUsed = _getMySkulls(msg.sender);
         uint256 newMiners = skullsUsed / SKULLS_TO_COLLECT_1MINERS;
-        collectionMiners[msg.sender] = collectionMiners[msg.sender] + newMiners;
+        collectionMiners[msg.sender] += newMiners;
         claimedSkulls[msg.sender] = 0;
         lastCollected[msg.sender] = block.timestamp;
         
-        claimedSkulls[referrals[msg.sender]] = claimedSkulls[referrals[msg.sender]] + (skullsUsed / 10);
-        marketSkulls = marketSkulls + (skullsUsed / 5);
+        claimedSkulls[referrals[msg.sender]] += (skullsUsed / 20);
+        marketSkulls += skullsUsed / 5;
     }
     
     function sellSkulls() public {
         require(initialized, "Contract has not been initialized yet! Wait the admin to start it");
         require(getNextDepositTime(msg.sender) == 0, "You cannot sell your skulls yet. It's for sustenability sake and for the community health!");
 
-        uint256 hasSkulls = getMySkulls(msg.sender);
+        uint256 hasSkulls = _getMySkulls(msg.sender);
         uint256 skullValue = calculateSkullSell(hasSkulls);
         uint256 fees = _devFee(skullValue);
         claimedSkulls[msg.sender] = 0;
         lastCollected[msg.sender] = block.timestamp;
         marketSkulls = marketSkulls + hasSkulls;
+        
         blackApe.transfer(owner, fees);
         blackApe.transfer(msg.sender, skullValue - fees);
     }
     
     function skullRewards(address adr) public view returns(uint256) {
-        uint256 hasSkulls = getMySkulls(adr);
+        uint256 hasSkulls = _getMySkulls(adr);
         uint256 skullValue = calculateSkullSell(hasSkulls);
         return skullValue;
     }
@@ -120,16 +125,12 @@ contract ApeSkulls {
         return _calculateTrade(skulls, marketSkulls, blackApe.balanceOf(address(this)));
     }
     
-    function calculateSkullBuy(uint256 bnb, uint256 contractBalance) public view returns(uint256) {
-        return _calculateTrade(bnb, contractBalance, marketSkulls);
+    function calculateSkullBuy(uint256 blkape, uint256 contractBalance) public view returns(uint256) {
+        return _calculateTrade(blkape, contractBalance, marketSkulls);
     }
-    
-    function calculateSkullBuySimple(uint256 bnb) public view returns(uint256) {
-        return calculateSkullBuy(bnb, blackApe.balanceOf(address(this)));
-    }
-    
-    function getBalance() public view returns(uint256) {
-        return blackApe.balanceOf(address(this));
+
+    function getBalance(address addr) public view returns(uint256) {
+        return blackApe.balanceOf(addr);
     }
 
     function getNextDepositTime(address adr) public view returns(uint256) {
@@ -142,12 +143,12 @@ contract ApeSkulls {
     function getMyMiners(address adr) public view returns(uint256) {
         return collectionMiners[adr];
     }
-    
-    function getMySkulls(address adr) public view returns(uint256) {
-        return claimedSkulls[adr] + getSkullsSincelastCollected(adr);
+
+    function _getMySkulls(address adr) private view returns(uint256) {
+        return claimedSkulls[adr] + _getSkullsSincelastCollected(adr);
     }
     
-    function getSkullsSincelastCollected(address adr) public view returns(uint256) {
+    function _getSkullsSincelastCollected(address adr) private view returns(uint256) {
         uint256 secondsPassed = _min(SKULLS_TO_COLLECT_1MINERS, block.timestamp - lastCollected[adr]);
         return secondsPassed * collectionMiners[adr];
     }
