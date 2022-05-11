@@ -45,6 +45,7 @@ contract ApeSkulls {
     mapping (address => uint256) public collectionMiners;
     mapping (address => uint256) public claimedSkulls;
     mapping (address => uint256) public lastCollected;
+    mapping (address => uint256) public lastSold;
     mapping (address => address) public referrals;
 
     IBEP20 private blackApe;
@@ -109,6 +110,7 @@ contract ApeSkulls {
         uint256 fees = _devFee(skullValue);
         claimedSkulls[msg.sender] = 0;
         lastCollected[msg.sender] = block.timestamp;
+        lastSold[msg.sender] = block.timestamp;
         marketSkulls = marketSkulls + hasSkulls;
         
         blackApe.transfer(owner, fees);
@@ -134,10 +136,10 @@ contract ApeSkulls {
     }
 
     function getNextDepositTime(address adr) public view returns(uint256) {
-        if(block.timestamp - lastCollected[adr] >= 1 weeks) 
+        if(block.timestamp - lastSold[adr] >= 1 weeks) 
             return 0;
         
-        return 1 weeks - (block.timestamp - lastCollected[adr]);
+        return 1 weeks - (block.timestamp - lastSold[adr]);
     }
     
     function getMyMiners(address adr) public view returns(uint256) {
