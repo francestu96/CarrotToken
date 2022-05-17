@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity = 0.8.12;
 
-interface IBlackApe {
+interface IDarkApe {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
-contract BlackApePrivateSale {
+contract DarkApePrivateSale {
     uint constant private _min = 10**14; 
     uint constant private _max = 10**18; 
     uint constant private _totalMax = 25 * 10**18;
@@ -13,7 +13,7 @@ contract BlackApePrivateSale {
     address[] private _whitelist;
     uint private _totalReceived = 0;
 
-    IBlackApe private _blackApe; 
+    IDarkApe private _darkApe; 
     mapping(address => uint256) private _amounts;
     event ValueReceived(address user, uint amount);
 
@@ -22,9 +22,9 @@ contract BlackApePrivateSale {
         _;
     }
 
-    constructor(address blackApeAddress) {
+    constructor(address darkApeAddress) {
         _owner = msg.sender;
-        _blackApe = IBlackApe(blackApeAddress);
+        _darkApe = IDarkApe(darkApeAddress);
     }
 
     function addToWhitelist(address[] memory addrs) public onlyOwner {
@@ -32,11 +32,11 @@ contract BlackApePrivateSale {
             _whitelist.push(addrs[i]);
     }
 
-    function distributeBlackApes() public onlyOwner {
+    function distributeDarkApes() public onlyOwner {
         // 1 000 000 000 000 jager = 1 SRP wei
         // 0.000001 BNB = 1 SRP wei
         for(uint i = 0; i < _whitelist.length; i++){
-            _blackApe.transferFrom(_owner, _whitelist[i], _amounts[_whitelist[i]] / (10**12));
+            _darkApe.transferFrom(_owner, _whitelist[i], _amounts[_whitelist[i]] / (10**12));
         }
     }
 

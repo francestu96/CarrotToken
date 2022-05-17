@@ -17,7 +17,7 @@ interface IBEP20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
-contract BlackApe is IBEP20 {
+contract DarkApe is IBEP20 {
     uint256 private _totalSupply;
     string private _name;
     string private _symbol;
@@ -30,6 +30,7 @@ contract BlackApe is IBEP20 {
     bool private _inSwapAndLiquify;
     bool private _inSwapTokenForETH;
     address private _owner;
+    address private _miner;
     
     bool private _launched;
     uint256 private _launchedAt;
@@ -42,6 +43,9 @@ contract BlackApe is IBEP20 {
     uint8 private _buyBackFees = 3;
     uint8 private _liquidityFees = 2;
 
+    uint256 public totalNFTHoldersFeesAmount = 0;
+
+
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
@@ -49,6 +53,11 @@ contract BlackApe is IBEP20 {
         require(_owner == msg.sender, "Ownable: caller is not the owner");
         _;
     }
+    modifier onlyMiner() {
+        require(_miner == msg.sender, "Ownable: caller is not the miner");
+        _;
+    }
+
     modifier lockSwapTokenForETH {
         _inSwapTokenForETH = true;
         _;
@@ -63,8 +72,8 @@ contract BlackApe is IBEP20 {
     }
 
     constructor() {
-        _name = "BlackApe";
-        _symbol = "BLKAPE";
+        _name = "DarkApe";
+        _symbol = "DRKAPE";
         _totalSupply = 10**9 * 10**decimals();
         _minTokensToAddLiquidity = 5**6 * 10**decimals();
         _minBnbToBuyback = 10 * 10**18;    
@@ -79,6 +88,15 @@ contract BlackApe is IBEP20 {
         _uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory()).createPair(address(this), _uniswapV2Router.WETH());
     }
 
+    function approvePrivateSale(address privateSale) public onlyOwner returns (bool) {
+        _approve(msg.sender, privateSale, type(uint256).max);
+        return true;
+    }
+
+    function setMiner(address miner) public onlyOwner returns (bool) {
+        _miner = miner;
+        return true;
+    }
 
     function transfer(address to, uint256 amount) public override returns (bool) {
         _transferFeesCheck(msg.sender, to, amount);
@@ -98,13 +116,12 @@ contract BlackApe is IBEP20 {
         return true;
     }
 
-    function approvePrivateSale(address privateSale) public onlyOwner returns (bool) {
-        _approve(msg.sender, privateSale, type(uint256).max);
-        return true;
-    }
-
     function setMinBnbToBuyback(uint256 value) public onlyOwner {
         _minBnbToBuyback = value;
+    }
+
+    function addNFTHoldersFees(uint256 amount) public onlyMiner {
+        totalNFTHoldersFeesAmount += amount;
     }
 
     function approve(address spender, uint256 amount) public override returns (bool) {
@@ -134,8 +151,23 @@ contract BlackApe is IBEP20 {
             return _balances[account];
         }
 
-        uint accountPerm = _balances[account] * 1000 / _totalSupply;
-        return _balances[account] + (totalHoldersFeesAmount * accountPerm / 1000);
+        // TODO: Get NFT perm based on rarity
+        // string[] OwnedRarities = NFTaddr.getNFTs();
+        // switch(rarity){
+        //     Legendary: 40%
+        //     Epic: 30%
+        //     Rare: 20%
+        //     Common: 10%
+        //
+        //     NFTPerc = get based on rairty and minted
+        // }
+        // 
+        // ... + (_balances[account] * NFTPerc / 1000);
+        // 
+        // uint256 NFTPerm = NFTaddr.getAccountFees();
+
+        uint256 accountPerc = _balances[account] * 1000 / _totalSupply;
+        return _balances[account] + (totalHoldersFeesAmount * accountPerc / 1000); // + (_balances[account] * NFTPerc / 1000);
     }
 
     function totalSupply() public view virtual override returns (uint256) {

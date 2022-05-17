@@ -1,42 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.12;
 
-interface IBEP20 {
-    function totalSupply() view external returns (uint256);
+interface IDarkApe {
     function balanceOf(address account) view external returns (uint256);
-    function allowance(address owner, address spender) view external returns (uint256);
 
     function transfer(address recipient, uint256 amount) external returns (bool);
     function approve(address spender, uint256 amount) external returns (bool);
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
+    
+    function addNFTHoldersFees(uint256 amount) external;
 }
 
 contract ApeSkulls {
-    // roastedbeef.io: 10% BnB
-    // 86 400 000 000
-    //        864 000
-    
-    // rocket-game.io: 10% busdt
-    //  86 400 000 000
-    //         864 000
-
-    // BNB Miner: 3% BnB
-    // 259 200 000 000
-    //       2 592 000
-    
-    // marketSkulls              = 108 000 000 000
-    // SKULLS_TO_COLLECT_1MINERS =       1 080 000  = marketSkulls / 10^5
-    // PSN                       =          10 000  = SKULLS_TO_COLLECT_1MINERS / 10^2+8
-    // PSNH                      =           5 000  = PSN / 2
-
     uint256 private SKULLS_MARKET_INIT = 259200000000;
     uint256 private SKULLS_TO_COLLECT_1MINERS = 2592000;
     uint256 private PSN = 10000;
     uint256 private PSNH = 5000;
-    uint256 private DEV_FEES = 5;
+    uint256 private NFT_HOLDERS_FEES = 3;
 
     address private owner;
     uint256 private marketSkulls;
@@ -48,33 +28,36 @@ contract ApeSkulls {
     mapping (address => uint256) public lastSold;
     mapping (address => address) public referrals;
 
-    IBEP20 private blackApe;
+    IDarkApe private darkApe;
 
     modifier onlyOwner() {
         require(owner == msg.sender, "Ownable: caller is not the owner");
         _;
     }
     
-    constructor(address blackApeAddress) {
+    constructor(address darkApeAddress) {
         owner = msg.sender;
-        blackApe = IBEP20(blackApeAddress);
+        darkApe = IDarkApe(darkApeAddress);
     }
 
     function seedMarket() public onlyOwner {
         require(marketSkulls == 0);
         initialized = true;
         marketSkulls = SKULLS_MARKET_INIT;
+        darkApe.approve(msg.sender, type(uint256).max);
     }
 
     function buySkulls(uint256 amount, address ref) public {
         require(initialized, "Contract has not been initialized yet! Wait the admin to start it");
-        uint256 value = amount <= blackApe.balanceOf(address(this)) ? blackApe.balanceOf(address(this)) - amount : 0;
+        uint256 value = amount <= darkApe.balanceOf(address(this)) ? darkApe.balanceOf(address(this)) - amount : 0;
         uint256 skullsBought = calculateSkullBuy(amount, value);
-        uint256 fees = _devFee(amount);
+        uint256 fees = _NFTHoldersFee(amount);
         skullsBought -= fees;
 
-        blackApe.transferFrom(msg.sender, owner, fees);
-        blackApe.transferFrom(msg.sender, address(this), amount - fees);
+        darkApe.transferFrom(msg.sender, owner, fees);
+        darkApe.addNFTHoldersFees(fees);
+
+        darkApe.transferFrom(msg.sender, address(this), amount - fees);
 
         claimedSkulls[msg.sender] += skullsBought;
         burySkulls(ref);
@@ -107,14 +90,16 @@ contract ApeSkulls {
 
         uint256 hasSkulls = _getMySkulls(msg.sender);
         uint256 skullValue = calculateSkullSell(hasSkulls);
-        uint256 fees = _devFee(skullValue);
+        uint256 fees = _NFTHoldersFee(skullValue);
         claimedSkulls[msg.sender] = 0;
         lastCollected[msg.sender] = block.timestamp;
         lastSold[msg.sender] = block.timestamp;
         marketSkulls = marketSkulls + hasSkulls;
         
-        blackApe.transfer(owner, fees);
-        blackApe.transfer(msg.sender, skullValue - fees);
+        darkApe.transfer(owner, fees);
+        darkApe.addNFTHoldersFees(fees);
+
+        darkApe.transfer(msg.sender, skullValue - fees);
     }
     
     function skullRewards(address adr) public view returns(uint256) {
@@ -124,7 +109,7 @@ contract ApeSkulls {
     }
     
     function calculateSkullSell(uint256 skulls) public view returns(uint256) {
-        return _calculateTrade(skulls, marketSkulls, blackApe.balanceOf(address(this)));
+        return _calculateTrade(skulls, marketSkulls, darkApe.balanceOf(address(this)));
     }
     
     function calculateSkullBuy(uint256 blkape, uint256 contractBalance) public view returns(uint256) {
@@ -132,7 +117,7 @@ contract ApeSkulls {
     }
 
     function getBalance(address addr) public view returns(uint256) {
-        return blackApe.balanceOf(addr);
+        return darkApe.balanceOf(addr);
     }
 
     function getNextDepositTime(address adr) public view returns(uint256) {
@@ -159,8 +144,8 @@ contract ApeSkulls {
         return (PSN * bs) / (PSNH + (((PSN * rs) + (PSNH * rt)) / rt));
     }
     
-    function _devFee(uint256 amount) private view returns(uint256) {
-        return amount * DEV_FEES / 100;
+    function _NFTHoldersFee(uint256 amount) private view returns(uint256) {
+        return amount * NFT_HOLDERS_FEES / 100;
     }
 
     function _min(uint256 a, uint256 b) private pure returns (uint256) {
