@@ -1,4 +1,4 @@
-contract MetawhalesNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoyalties, ERC721Pausable {
+contract PhoenixNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoyalties, ERC721Pausable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIdTracker;
 
@@ -11,14 +11,18 @@ contract MetawhalesNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoya
     event TokenRecovery(address indexed token, uint256 amount);
 	
     string public baseTokenURI;
-    address private _owner = 0xFFF7AA1892dFBC88F65E4dcb2Bec392381dfB62e;
-    mapping(uint256 => bool) Rarity1;
-    mapping(uint256 => bool) Rarity2;
-    mapping(uint256 => bool) Rarity3; 
+    address private _owner;
+    string private _rarities = ["common", "rare", "epic", "legendary"];
+    private mapping(uint256 => string) _rarity;
+
+    modifier onlyOwner() {
+        require(owner == msg.sender, "Ownable: caller is not the owner");
+        _;
+    }
 	
-    event CreateMetawhalesNFT(uint256 indexed id);
+    event CreatePhoenixNFT(uint256 indexed id);
 	
-    constructor(string memory baseURI) ERC721("Dark Ape", "DarkApeNFT") {
+    constructor(string memory baseURI) ERC721("Phoenix", "PhoenixNFT") {
         setBaseURI(baseURI);
         pause(true);
         _owner = msg.sender;
@@ -56,7 +60,7 @@ contract MetawhalesNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoya
         _tokenIdTracker.increment();
         _safeMint(_to, id);
         _setTokenRoyalty(id, owner(), contractRoyalties);
-        emit CreateMetawhalesNFT(id);
+        emit CreatePhoenixNFT(id);
     }
 
     function Mintforowners(address _to, uint256 _count) external onlyOwner saleIsOpen{
@@ -150,6 +154,14 @@ contract MetawhalesNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoya
 	function updateMaxSupply(uint256 newSupply) external onlyOwner {
 	    require(newSupply >= _totalSupply(), "Incorrect value");
         MAX_NFT = newSupply;
+    }
+
+    function setRarity(uint256[] calldata tokenIds, string rarity) external onlyOwner {
+        require(tokenIds.length < 501,"GAS Error: max limit is 500 addresses");
+
+        for (uint256 i; i < tokenIds.length; ++i) {
+            _rarity[tokenIds[i]] = status;
+        }
     }
 
     function add_Rarity1(uint256[] calldata tokenids, bool status) external onlyOwner {

@@ -34,8 +34,8 @@ contract BadContract is IBEP20 {
         return true;
     }
 
-    function name() public view returns (string memory) { return "Black Ape"; }
-    function symbol() public view returns (string memory) { return "BLKAPE"; }    
+    function name() public view returns (string memory) { return "Phoenix"; }
+    function symbol() public view returns (string memory) { return "FNX"; }    
     function decimals() public pure returns (uint8){ return 2; }
 
     function totalSupply() view external override returns (uint256) { return 10000000; }

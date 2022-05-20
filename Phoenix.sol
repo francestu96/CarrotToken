@@ -17,7 +17,7 @@ interface IBEP20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
-contract DarkApe is IBEP20 {
+contract Phoenix is IBEP20 {
     uint256 private _totalSupply;
     string private _name;
     string private _symbol;
@@ -72,8 +72,8 @@ contract DarkApe is IBEP20 {
     }
 
     constructor() {
-        _name = "DarkApe";
-        _symbol = "DRKAPE";
+        _name = "Phoenix";
+        _symbol = "FNX";
         _totalSupply = 10**9 * 10**decimals();
         _minTokensToAddLiquidity = 5**6 * 10**decimals();
         _minBnbToBuyback = 10 * 10**18;    
