@@ -1,50 +1,67 @@
-contract PhoenixNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoyalties, ERC721Pausable {
+// SPDX-License-Identifier: MIT
+pragma solidity = 0.8.12;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Royalty.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+interface IBEP20 {
+    function totalSupply() view external returns (uint256);
+    function balanceOf(address account) view external returns (uint256);
+    function allowance(address owner, address spender) view external returns (uint256);
+
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIdTracker;
 
     uint256 public MAX_NFT = 1000;
     uint256 public MAX_BY_MINT = 20;
 	uint256 public PRICE = 7 * 10**16;
-    uint256 private contractRoyalties = 500;
+    uint96 private contractRoyalties = 500;
+    uint256 private rarityReflectionCounter = 0;
 
     event NonFungibleTokenRecovery(address indexed token, uint256 tokenId);
     event TokenRecovery(address indexed token, uint256 amount);
 	
     string public baseTokenURI;
     address private _owner;
-    string private _rarities = ["common", "rare", "epic", "legendary"];
-    private mapping(uint256 => string) _rarity;
+    mapping(uint256 => string) private _rarities;
 
-    modifier onlyOwner() {
-        require(owner == msg.sender, "Ownable: caller is not the owner");
+    modifier onlyOwner {
+        require(_owner == msg.sender, "Ownable: caller is not the owner");
         _;
     }
 	
     event CreatePhoenixNFT(uint256 indexed id);
 	
-    constructor(string memory baseURI) ERC721("Phoenix", "PhoenixNFT") {
+    constructor(address multiSignWallet, string memory baseURI) ERC721("Phoenix", "PhoenixNFT") {
         setBaseURI(baseURI);
-        pause(true);
-        _owner = msg.sender;
+        _pause();
+        _owner = multiSignWallet;
     }
 	
     modifier saleIsOpen {
         require(_totalSupply() <= MAX_NFT, "Sale end");
-        if (_msgSender() != owner()) {
+        if (_msgSender() != _owner) {
             require(!paused(), "Pausable: paused");
         }
         _;
     }
 	
-    function _totalSupply() internal view returns (uint) {
-        return _tokenIdTracker.current();
-    }
-	
-    function totalMint() public view returns (uint256) {
+    function totalMint() external view returns (uint256) {
         return _totalSupply();
     }
 
-    function mint(uint256 _count) public payable saleIsOpen {
+    function mint(uint8 _count) external payable saleIsOpen {
         uint256 total = _totalSupply();
         require(total + _count <= MAX_NFT, "Max limit");
         require(total <= MAX_NFT, "Sale end");
@@ -55,15 +72,7 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoyalti
         }
     }
 	
-    function _mintAnElement(address _to) private {
-        uint id = _totalSupply();
-        _tokenIdTracker.increment();
-        _safeMint(_to, id);
-        _setTokenRoyalty(id, owner(), contractRoyalties);
-        emit CreatePhoenixNFT(id);
-    }
-
-    function Mintforowners(address _to, uint256 _count) external onlyOwner saleIsOpen{
+    function mintForOwners(address _to, uint256 _count) external onlyOwner saleIsOpen {
        for (uint256 i = 0; i < _count; i++) {
             _mintAnElement(_to);
         }
@@ -79,34 +88,44 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoyalti
         uint256 balance = IBEP20(_token).balanceOf(address(this));
         require(balance != 0, "Operations: Cannot recover zero balance");
 
-        IBEP20(_token).safeTransfer(address(msg.sender), balance);
+        IBEP20(_token).transfer(address(_owner), balance);
 
         emit TokenRecovery(_token, balance);
     }
 	
-    function price(uint256 _count) public view returns (uint256) {
-        return PRICE.mul(_count);
-    }
-
-    function _baseURI() internal view virtual override returns (string memory) {
-        return baseTokenURI;
+    function price(uint8 _count) public view returns (uint256) {
+        return PRICE * _count;
     }
 
 	function setBaseURI(string memory baseURI) public onlyOwner {
         baseTokenURI = baseURI;
     }
 
-    function walletOfOwner(address _owner) external view returns (uint256[] memory) {
-        uint256 tokenCount = balanceOf(_owner);
-        uint256[] memory tokensId = new uint256[](tokenCount);
-        for (uint256 i = 0; i < tokenCount; i++) {
-            tokensId[i] = tokenOfOwnerByIndex(_owner, i);
+    function getAccountReflection(address addr) external view returns (uint256) {
+        uint256 tokenCount = balanceOf(addr);
+        uint256[] memory tokenIds = new uint256[](tokenCount);
+        string[] memory rarities = new string[](tokenCount);
+        uint8 reward = 0;
+
+        for (uint8 i = 0; i < tokenCount; i++) {
+            tokenIds[i] = tokenOfOwnerByIndex(addr, i);
+            rarities[i] = getRarity(tokenIds[i]);
+
+            if(keccak256(abi.encodePacked((rarities[i]))) == keccak256(abi.encodePacked(("legendary"))))
+                reward += 40;
+            else if(keccak256(abi.encodePacked((rarities[i]))) == keccak256(abi.encodePacked(("epic"))))
+                reward += 30;
+            else if(keccak256(abi.encodePacked((rarities[i]))) == keccak256(abi.encodePacked(("rare"))))
+                reward += 20;
+            else
+                reward += 10;
         }
-        return tokensId;
+
+        return reward * 1000 / rarityReflectionCounter;
     }
 	
-    function pause(bool val) public onlyOwner {
-        if (val == true) {
+    function pause(bool val) external onlyOwner {
+        if (val) {
             _pause();
             return;
         }
@@ -116,13 +135,13 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoyalti
 	function withdraw(uint256 amount) public onlyOwner {
 		uint256 balance = address(this).balance;
         require(balance >= amount);
-        _widthdraw(owner(), amount);
+        _widthdraw(_owner, amount);
     }
 
     function withdrawAll() public onlyOwner {
         uint256 balance = address(this).balance;
         require(balance > 0);
-        _widthdraw(owner(), address(this).balance);
+        _widthdraw(_owner, address(this).balance);
     }
 
     function _widthdraw(address _address, uint256 _amount) private {
@@ -130,15 +149,7 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoyalti
         require(success, "Transfer failed.");
     }
 
-    function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 tokenId
-    ) internal virtual override(ERC721, ERC721Enumerable, ERC721Pausable) {
-        super._beforeTokenTransfer(from, to, tokenId);
-    }
-
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, ERC721Enumerable, ERC2981PerTokenRoyalties) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, ERC721Enumerable, ERC721Royalty) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 	
@@ -156,44 +167,69 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, Ownable, ERC2981PerTokenRoyalti
         MAX_NFT = newSupply;
     }
 
-    function setRarity(uint256[] calldata tokenIds, string rarity) external onlyOwner {
-        require(tokenIds.length < 501,"GAS Error: max limit is 500 addresses");
+    function setRarity(uint256[] calldata tokenIds, string calldata rarity) external onlyOwner {
+        require(tokenIds.length < MAX_NFT,"Token ids exceed the maximum amount of NFTs");
+        
+        bool isRarityValid = false;
+        isRarityValid = isRarityValid || (keccak256(abi.encodePacked(rarity)) == keccak256(abi.encodePacked("legendary")));
+        isRarityValid = isRarityValid || (keccak256(abi.encodePacked(rarity)) == keccak256(abi.encodePacked("rare")));
+        isRarityValid = isRarityValid || (keccak256(abi.encodePacked(rarity)) == keccak256(abi.encodePacked("epic")));
+        isRarityValid = isRarityValid || (keccak256(abi.encodePacked(rarity)) == keccak256(abi.encodePacked("common")));
+        require(isRarityValid, "Rarity value must be 'common', 'rare', 'epic' or 'legendary'");
 
-        for (uint256 i; i < tokenIds.length; ++i) {
-            _rarity[tokenIds[i]] = status;
+        for (uint16 i = 0; i < tokenIds.length; i++){
+            _rarities[tokenIds[i]] = rarity;
         }
     }
 
-    function add_Rarity1(uint256[] calldata tokenids, bool status) external onlyOwner {
-        require(tokenids.length < 501,"GAS Error: max limit is 500 addresses");
-        for (uint256 i; i < tokenids.length; ++i) {
-            Rarity1[tokenids[i]] = status;
+    function getRarity(uint256 tokenId) public view returns (string memory) {
+        return _rarities[tokenId];
+    }
+
+
+    function _baseURI() internal view virtual override returns (string memory) {
+        return baseTokenURI;
+    }
+    
+    function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal virtual override(ERC721, ERC721Enumerable, ERC721Pausable) {
+        super._beforeTokenTransfer(from, to, tokenId);
+    }
+
+    function _burn(uint256 tokenId) internal virtual override(ERC721Royalty, ERC721) {
+        super._burn(tokenId);
+    }
+
+
+    function _totalSupply() private view returns (uint) {
+        return _tokenIdTracker.current();
+    }
+
+    function _mintAnElement(address _to) private {
+        uint id = _totalSupply();
+        _tokenIdTracker.increment();
+        _safeMint(_to, id);
+        _setTokenRoyalty(id, _owner, contractRoyalties);
+
+        uint256 seed = uint256(keccak256(abi.encodePacked(block.timestamp + block.difficulty + ((uint256(keccak256(abi.encodePacked(block.coinbase)))) / (block.timestamp)) + block.gaslimit +  ((uint256(keccak256(abi.encodePacked(msg.sender)))) / (block.timestamp)) + block.number)));
+        uint256 rand = seed % 10;
+        if(rand < 4){
+            rarityReflectionCounter += 10;
+            _rarities[id] = "common";
         }
-    }
-
-    function add_Rarity2(uint256[] calldata tokenids, bool status) external onlyOwner {
-        require(tokenids.length < 501,"GAS Error: max limit is 500 addresses");
-        for (uint256 i; i < tokenids.length; ++i) {
-            Rarity2[tokenids[i]] = status;
+        else if(rand < 7){
+            rarityReflectionCounter += 20;
+            _rarities[id] = "rare";
         }
-    }
-
-    function add_Rarity3(uint256[] calldata tokenids, bool status) external onlyOwner {
-        require(tokenids.length < 501,"GAS Error: max limit is 500 addresses");
-        for (uint256 i; i < tokenids.length; ++i) {
-            Rarity3[tokenids[i]] = status;
+        else if(rand < 9){
+            rarityReflectionCounter += 30;
+            _rarities[id] = "epic";
         }
+        else{
+            rarityReflectionCounter += 40;
+            _rarities[id] = "legendary";
+        }
+
+        emit CreatePhoenixNFT(id);
     }
 
-    function isRarity1(uint256 tokenid) external view returns (bool) {
-        return Rarity1[tokenid];
-    }
-
-    function isRarity2(uint256 tokenid) external view returns (bool) {
-        return Rarity2[tokenid];
-    }
-
-    function isRarity3(uint256 tokenid) external view returns (bool) {
-        return Rarity3[tokenid];
-    } 
 }

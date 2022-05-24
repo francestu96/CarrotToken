@@ -22,8 +22,8 @@ contract PhoenixPrivateSale {
         _;
     }
 
-    constructor(address phoenixAddress) {
-        _owner = msg.sender;
+    constructor(address multiSignWallet, address phoenixAddress) {
+        _owner = multiSignWallet;
         _phoenix = IPhoenix(phoenixAddress);
     }
 

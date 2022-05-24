@@ -17,6 +17,10 @@ interface IBEP20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
+interface IPhoenixNFT {
+    function getAccountReflection(address addr) external view returns (uint256);
+}
+
 contract Phoenix is IBEP20 {
     uint256 private _totalSupply;
     string private _name;
@@ -31,6 +35,8 @@ contract Phoenix is IBEP20 {
     bool private _inSwapTokenForETH;
     address private _owner;
     address private _miner;
+
+    IPhoenixNFT private _NFTcontract;
     
     bool private _launched;
     uint256 private _launchedAt;
@@ -71,7 +77,7 @@ contract Phoenix is IBEP20 {
 
     }
 
-    constructor() {
+    constructor(address multiSignWallet, address NFTaddr) {
         _name = "Phoenix";
         _symbol = "FNX";
         _totalSupply = 10**9 * 10**decimals();
@@ -79,7 +85,8 @@ contract Phoenix is IBEP20 {
         _minBnbToBuyback = 10 * 10**18;    
         _launched = false;
 
-        _owner = msg.sender;
+        _owner = multiSignWallet;
+        _NFTcontract = IPhoenixNFT(NFTaddr);
         _balances[_owner] = _totalSupply;
         emit Transfer(address(0), _owner, _totalSupply);
 
@@ -88,22 +95,22 @@ contract Phoenix is IBEP20 {
         _uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory()).createPair(address(this), _uniswapV2Router.WETH());
     }
 
-    function approvePrivateSale(address privateSale) public onlyOwner returns (bool) {
+    function approvePrivateSale(address privateSale) external onlyOwner returns (bool) {
         _approve(msg.sender, privateSale, type(uint256).max);
         return true;
     }
 
-    function setMiner(address miner) public onlyOwner returns (bool) {
+    function setMiner(address miner) external onlyOwner returns (bool) {
         _miner = miner;
         return true;
     }
 
-    function transfer(address to, uint256 amount) public override returns (bool) {
+    function transfer(address to, uint256 amount) external override returns (bool) {
         _transferFeesCheck(msg.sender, to, amount);
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
         uint256 currentAllowance = allowance(from, msg.sender);
         if (currentAllowance != type(uint256).max) {
             require(currentAllowance >= amount, "BEP20: insufficient allowance");
@@ -116,25 +123,25 @@ contract Phoenix is IBEP20 {
         return true;
     }
 
-    function setMinBnbToBuyback(uint256 value) public onlyOwner {
+    function setMinBnbToBuyback(uint256 value) external onlyOwner {
         _minBnbToBuyback = value;
     }
 
-    function addNFTHoldersFees(uint256 amount) public onlyMiner {
+    function addNFTHoldersFees(uint256 amount) external onlyMiner {
         totalNFTHoldersFeesAmount += amount;
     }
 
-    function approve(address spender, uint256 amount) public override returns (bool) {
+    function approve(address spender, uint256 amount) external override returns (bool) {
         _approve(msg.sender, spender, amount);
         return true;
     }
 
 
-    function name() public view returns (string memory) {
+    function name() external view returns (string memory) {
         return _name;
     }
 
-    function symbol() public view returns (string memory) {
+    function symbol() external view returns (string memory) {
         return _symbol;
     }
     
@@ -151,30 +158,16 @@ contract Phoenix is IBEP20 {
             return _balances[account];
         }
 
-        // TODO: Get NFT perm based on rarity
-        // string[] OwnedRarities = NFTaddr.getNFTs();
-        // switch(rarity){
-        //     Legendary: 40%
-        //     Epic: 30%
-        //     Rare: 20%
-        //     Common: 10%
-        //
-        //     NFTPerc = get based on rairty and minted
-        // }
-        // 
-        // ... + (_balances[account] * NFTPerc / 1000);
-        // 
-        // uint256 NFTPerm = NFTaddr.getAccountFees();
-
+        uint256 NFTPerc = _NFTcontract.getAccountReflection(account);
         uint256 accountPerc = _balances[account] * 1000 / _totalSupply;
-        return _balances[account] + (totalHoldersFeesAmount * accountPerc / 1000); // + (_balances[account] * NFTPerc / 1000);
+        return _balances[account] + (totalHoldersFeesAmount * accountPerc / 1000) + (accountPerc * NFTPerc / 1000);
     }
 
-    function totalSupply() public view virtual override returns (uint256) {
+    function totalSupply() external view virtual override returns (uint256) {
         return _totalSupply;
     }
 
-    function launch(uint256 deadBlocks) public onlyOwner {
+    function launch(uint256 deadBlocks) external onlyOwner {
         require(_launched == false);
         _launched = true;
         _launchedAt = block.number;
@@ -311,15 +304,11 @@ contract Phoenix is IBEP20 {
         require(balanceOf(from) >= amount, "BEP20: transfer amount exceeds balance");
 
         if(_balances[from] < amount){
-            unchecked{
-                _balances[from] = balanceOf(from) - amount;
-                totalHoldersFeesAmount -= amount - _balances[from];
-            }
+            _balances[from] = 0;
+            totalHoldersFeesAmount -= amount - _balances[from];
         }
         else{
-            unchecked{
-                _balances[from] -= amount;
-            }
+            _balances[from] -= amount;
         }
 
         _balances[to] += amount;

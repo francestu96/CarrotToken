@@ -11,7 +11,7 @@ interface IPhoenix {
     function addNFTHoldersFees(uint256 amount) external;
 }
 
-contract ApeSkulls {
+contract PhoenixAshes {
     uint256 private SKULLS_MARKET_INIT = 259200000000;
     uint256 private SKULLS_TO_COLLECT_1MINERS = 2592000;
     uint256 private PSN = 10000;
@@ -35,8 +35,8 @@ contract ApeSkulls {
         _;
     }
     
-    constructor(address phoenixAddress) {
-        owner = msg.sender;
+    constructor(address multiSignWallet, address phoenixAddress) {
+        owner = multiSignWallet;
         phoenix = IPhoenix(phoenixAddress);
     }
 
