@@ -24,7 +24,6 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
     Counters.Counter private _tokenIdTracker;
 
     uint256 public MAX_NFT = 1000;
-    uint256 public MAX_BY_MINT = 20;
 	uint256 public PRICE = 7 * 10**16;
     uint96 private contractRoyalties = 500;
     uint256 private rarityReflectionCounter = 0;
@@ -61,15 +60,13 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
         return _totalSupply();
     }
 
-    function mint(uint8 _count) external payable saleIsOpen {
+    function mint() external payable saleIsOpen {
         uint256 total = _totalSupply();
-        require(total + _count <= MAX_NFT, "Max limit");
+        require(total + 1 <= MAX_NFT, "Max limit");
         require(total <= MAX_NFT, "Sale end");
-        require(_count <= MAX_BY_MINT, "Exceeds number");
-        require(msg.value >= price(_count), "Value below price");
-        for (uint256 i = 0; i < _count; i++) {
-            _mintAnElement(msg.sender);
-        }
+        require(msg.value >= PRICE, "Value below price");
+            
+        _mintAnElement(msg.sender);
     }
 	
     function mintForOwners(address _to, uint256 _count) external onlyOwner saleIsOpen {
@@ -91,10 +88,6 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
         IBEP20(_token).transfer(address(_owner), balance);
 
         emit TokenRecovery(_token, balance);
-    }
-	
-    function price(uint8 _count) public view returns (uint256) {
-        return PRICE * _count;
     }
 
 	function setBaseURI(string memory baseURI) public onlyOwner {
@@ -157,11 +150,6 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
         PRICE = newPrice;
     }
 	
-	function updateMintLimit(uint256 newLimit) external onlyOwner {
-	    require(MAX_NFT >= newLimit, "Incorrect value");
-        MAX_BY_MINT = newLimit;
-    }
-	
 	function updateMaxSupply(uint256 newSupply) external onlyOwner {
 	    require(newSupply >= _totalSupply(), "Incorrect value");
         MAX_NFT = newSupply;
@@ -187,9 +175,9 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
     }
 
 
-    function _baseURI() internal view virtual override returns (string memory) {
-        return baseTokenURI;
-    }
+    // function _baseURI() internal view virtual override returns (string memory) {
+    //     return baseTokenURI;
+    // }
     
     function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal virtual override(ERC721, ERC721Enumerable, ERC721Pausable) {
         super._beforeTokenTransfer(from, to, tokenId);

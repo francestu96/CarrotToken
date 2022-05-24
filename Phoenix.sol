@@ -100,7 +100,7 @@ contract Phoenix is IBEP20 {
         return true;
     }
 
-    function setMiner(address miner) external onlyOwner returns (bool) {
+    function updateMiner(address miner) external onlyOwner returns (bool) {
         _miner = miner;
         return true;
     }

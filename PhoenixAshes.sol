@@ -12,18 +12,18 @@ interface IPhoenix {
 }
 
 contract PhoenixAshes {
-    uint256 private SKULLS_MARKET_INIT = 259200000000;
-    uint256 private SKULLS_TO_COLLECT_1MINERS = 2592000;
+    uint256 private ASHES_MARKET_INIT = 259200000000;
+    uint256 private ASHES_TO_COLLECT_1MINERS = 2592000;
     uint256 private PSN = 10000;
     uint256 private PSNH = 5000;
     uint256 private NFT_HOLDERS_FEES = 3;
 
     address private owner;
-    uint256 private marketSkulls;
+    uint256 private marketAshes;
     bool private initialized = false;
 
     mapping (address => uint256) public collectionMiners;
-    mapping (address => uint256) public claimedSkulls;
+    mapping (address => uint256) public claimedAshes;
     mapping (address => uint256) public lastCollected;
     mapping (address => uint256) public lastSold;
     mapping (address => address) public referrals;
@@ -40,30 +40,30 @@ contract PhoenixAshes {
         phoenix = IPhoenix(phoenixAddress);
     }
 
-    function seedMarket() public onlyOwner {
-        require(marketSkulls == 0);
+    function seedMarket() external onlyOwner {
+        require(marketAshes == 0);
         initialized = true;
-        marketSkulls = SKULLS_MARKET_INIT;
+        marketAshes = ASHES_MARKET_INIT;
         phoenix.approve(msg.sender, type(uint256).max);
     }
 
-    function buySkulls(uint256 amount, address ref) public {
+    function buyAshes(uint256 amount, address ref) external {
         require(initialized, "Contract has not been initialized yet! Wait the admin to start it");
         uint256 value = amount <= phoenix.balanceOf(address(this)) ? phoenix.balanceOf(address(this)) - amount : 0;
-        uint256 skullsBought = calculateSkullBuy(amount, value);
+        uint256 ashesBought = calculateAshBuy(amount, value);
         uint256 fees = _NFTHoldersFee(amount);
-        skullsBought -= fees;
+        ashesBought -= fees;
 
         phoenix.transferFrom(msg.sender, owner, fees);
         phoenix.addNFTHoldersFees(fees);
 
         phoenix.transferFrom(msg.sender, address(this), amount - fees);
 
-        claimedSkulls[msg.sender] += skullsBought;
-        burySkulls(ref);
+        claimedAshes[msg.sender] += ashesBought;
+        burnAshes(ref);
     }
     
-    function burySkulls(address ref) public {
+    function burnAshes(address ref) public {
         require(initialized, "Contract has not been initialized yet! Wait the admin to start it");
         
         if(ref == msg.sender) {
@@ -74,46 +74,46 @@ contract PhoenixAshes {
             referrals[msg.sender] = ref;
         }
         
-        uint256 skullsUsed = _getMySkulls(msg.sender);
-        uint256 newMiners = skullsUsed / SKULLS_TO_COLLECT_1MINERS;
+        uint256 ashesUsed = _getMyAshes(msg.sender);
+        uint256 newMiners = ashesUsed / ASHES_TO_COLLECT_1MINERS;
         collectionMiners[msg.sender] += newMiners;
-        claimedSkulls[msg.sender] = 0;
+        claimedAshes[msg.sender] = 0;
         lastCollected[msg.sender] = block.timestamp;
         
-        claimedSkulls[referrals[msg.sender]] += (skullsUsed / 20);
-        marketSkulls += skullsUsed / 5;
+        claimedAshes[referrals[msg.sender]] += (ashesUsed / 20);
+        marketAshes += ashesUsed / 5;
     }
     
-    function sellSkulls() public {
+    function reborn() external {
         require(initialized, "Contract has not been initialized yet! Wait the admin to start it");
-        require(getNextDepositTime(msg.sender) == 0, "You cannot sell your skulls yet. It's for sustenability sake and for the community health!");
+        require(getNextDepositTime(msg.sender) == 0, "You cannot sell your ashes yet. It's for sustenability sake and for the community health!");
 
-        uint256 hasSkulls = _getMySkulls(msg.sender);
-        uint256 skullValue = calculateSkullSell(hasSkulls);
-        uint256 fees = _NFTHoldersFee(skullValue);
-        claimedSkulls[msg.sender] = 0;
+        uint256 hasAshes = _getMyAshes(msg.sender);
+        uint256 ashValue = calculateAshSell(hasAshes);
+        uint256 fees = _NFTHoldersFee(ashValue);
+        claimedAshes[msg.sender] = 0;
         lastCollected[msg.sender] = block.timestamp;
         lastSold[msg.sender] = block.timestamp;
-        marketSkulls = marketSkulls + hasSkulls;
+        marketAshes = marketAshes + hasAshes;
         
         phoenix.transfer(owner, fees);
         phoenix.addNFTHoldersFees(fees);
 
-        phoenix.transfer(msg.sender, skullValue - fees);
+        phoenix.transfer(msg.sender, ashValue - fees);
     }
     
-    function skullRewards(address adr) public view returns(uint256) {
-        uint256 hasSkulls = _getMySkulls(adr);
-        uint256 skullValue = calculateSkullSell(hasSkulls);
-        return skullValue;
+    function ashesReward(address adr) external view returns(uint256) {
+        uint256 hasAshes = _getMyAshes(adr);
+        uint256 ashValue = calculateAshSell(hasAshes);
+        return ashValue;
     }
     
-    function calculateSkullSell(uint256 skulls) public view returns(uint256) {
-        return _calculateTrade(skulls, marketSkulls, phoenix.balanceOf(address(this)));
+    function calculateAshSell(uint256 ashs) public view returns(uint256) {
+        return _calculateTrade(ashs, marketAshes, phoenix.balanceOf(address(this)));
     }
     
-    function calculateSkullBuy(uint256 blkape, uint256 contractBalance) public view returns(uint256) {
-        return _calculateTrade(blkape, contractBalance, marketSkulls);
+    function calculateAshBuy(uint256 blkape, uint256 contractBalance) public view returns(uint256) {
+        return _calculateTrade(blkape, contractBalance, marketAshes);
     }
 
     function getBalance(address addr) public view returns(uint256) {
@@ -131,12 +131,12 @@ contract PhoenixAshes {
         return collectionMiners[adr];
     }
 
-    function _getMySkulls(address adr) private view returns(uint256) {
-        return claimedSkulls[adr] + _getSkullsSincelastCollected(adr);
+    function _getMyAshes(address adr) private view returns(uint256) {
+        return claimedAshes[adr] + _getAshesSincelastCollected(adr);
     }
     
-    function _getSkullsSincelastCollected(address adr) private view returns(uint256) {
-        uint256 secondsPassed = _min(SKULLS_TO_COLLECT_1MINERS, block.timestamp - lastCollected[adr]);
+    function _getAshesSincelastCollected(address adr) private view returns(uint256) {
+        uint256 secondsPassed = _min(ASHES_TO_COLLECT_1MINERS, block.timestamp - lastCollected[adr]);
         return secondsPassed * collectionMiners[adr];
     }
 
