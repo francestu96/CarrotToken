@@ -29,7 +29,6 @@ contract PhoenixAshes {
     mapping (address => uint256) public collectionMiners;
     mapping (address => uint256) public claimedAshes;
     mapping (address => uint256) public lastCollected;
-    mapping (address => uint256) public lastSold;
     mapping (address => address) public referrals;
 
     IPhoenix private phoenixContract;
@@ -103,7 +102,6 @@ contract PhoenixAshes {
         uint256 fees = _NFTHoldersFee(ashValue);
         claimedAshes[msg.sender] = 0;
         lastCollected[msg.sender] = block.timestamp;
-        lastSold[msg.sender] = block.timestamp;
         marketAshes = marketAshes + hasAshes;
         
         phoenixContract.transfer(owner, fees);
@@ -140,10 +138,10 @@ contract PhoenixAshes {
     }
 
     function getNextDepositTime(address adr) public view returns(uint256) {
-        if(block.timestamp - lastSold[adr] >= 1 weeks) 
+        if(block.timestamp - lastCollected[adr] >= 1 weeks) 
             return 0;
         
-        return 1 weeks - (block.timestamp - lastSold[adr]);
+        return 1 weeks - (block.timestamp - lastCollected[adr]);
     }
     
     function getMyMiners(address adr) public view returns(uint256) {
