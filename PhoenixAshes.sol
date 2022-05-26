@@ -7,8 +7,9 @@ interface IPhoenix {
     function transfer(address recipient, uint256 amount) external returns (bool);
     function approve(address spender, uint256 amount) external returns (bool);
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    
-    function addNFTHoldersFees(uint256 amount) external;
+
+    function setMiner(address addr) external;
+    function distributeNFTFees(uint256 amount) external;
 }
 
 contract PhoenixAshes {
@@ -22,13 +23,16 @@ contract PhoenixAshes {
     uint256 private marketAshes;
     bool private initialized = false;
 
+    uint256 public NFTHoldersDistributionThreshold = 10**5;
+    uint256 public NFTHoldersAccumulator = 0;
+
     mapping (address => uint256) public collectionMiners;
     mapping (address => uint256) public claimedAshes;
     mapping (address => uint256) public lastCollected;
     mapping (address => uint256) public lastSold;
     mapping (address => address) public referrals;
 
-    IPhoenix private phoenix;
+    IPhoenix private phoenixContract;
 
     modifier onlyOwner() {
         require(owner == msg.sender, "Ownable: caller is not the owner");
@@ -37,30 +41,36 @@ contract PhoenixAshes {
     
     constructor(address multiSignWallet, address phoenixAddress) {
         owner = multiSignWallet;
-        phoenix = IPhoenix(phoenixAddress);
+        phoenixContract = IPhoenix(phoenixAddress);
+        phoenixContract.setMiner(address(this));
     }
 
     function seedMarket() external onlyOwner {
         require(marketAshes == 0);
         initialized = true;
         marketAshes = ASHES_MARKET_INIT;
-        phoenix.approve(msg.sender, type(uint256).max);
+        phoenixContract.approve(msg.sender, type(uint256).max);
     }
 
     function buyAshes(uint256 amount, address ref) external {
         require(initialized, "Contract has not been initialized yet! Wait the admin to start it");
-        uint256 value = amount <= phoenix.balanceOf(address(this)) ? phoenix.balanceOf(address(this)) - amount : 0;
+        uint256 value = amount <= phoenixContract.balanceOf(address(this)) ? phoenixContract.balanceOf(address(this)) - amount : 0;
         uint256 ashesBought = calculateAshBuy(amount, value);
         uint256 fees = _NFTHoldersFee(amount);
         ashesBought -= fees;
 
-        phoenix.transferFrom(msg.sender, owner, fees);
-        phoenix.addNFTHoldersFees(fees);
+        phoenixContract.transferFrom(msg.sender, owner, fees);
+        NFTHoldersAccumulator += fees;
 
-        phoenix.transferFrom(msg.sender, address(this), amount - fees);
+        phoenixContract.transferFrom(msg.sender, address(this), amount - fees);
 
         claimedAshes[msg.sender] += ashesBought;
         burnAshes(ref);
+
+        if(NFTHoldersAccumulator >= NFTHoldersDistributionThreshold){
+            phoenixContract.distributeNFTFees(NFTHoldersAccumulator);
+            NFTHoldersAccumulator = 0;
+        }
     }
     
     function burnAshes(address ref) public {
@@ -96,10 +106,15 @@ contract PhoenixAshes {
         lastSold[msg.sender] = block.timestamp;
         marketAshes = marketAshes + hasAshes;
         
-        phoenix.transfer(owner, fees);
-        phoenix.addNFTHoldersFees(fees);
+        phoenixContract.transfer(owner, fees);
+        NFTHoldersAccumulator += fees;
 
-        phoenix.transfer(msg.sender, ashValue - fees);
+        phoenixContract.transfer(msg.sender, ashValue - fees);
+
+        if(NFTHoldersAccumulator >= NFTHoldersDistributionThreshold){
+            phoenixContract.distributeNFTFees(NFTHoldersAccumulator);
+            NFTHoldersAccumulator = 0;
+        }
     }
     
     function ashesReward(address adr) external view returns(uint256) {
@@ -107,9 +122,13 @@ contract PhoenixAshes {
         uint256 ashValue = calculateAshSell(hasAshes);
         return ashValue;
     }
+
+    function setNFTHoldersDistributionThreshold(uint256 threshold) external onlyOwner {
+        NFTHoldersDistributionThreshold = threshold;
+    }
     
     function calculateAshSell(uint256 ashs) public view returns(uint256) {
-        return _calculateTrade(ashs, marketAshes, phoenix.balanceOf(address(this)));
+        return _calculateTrade(ashs, marketAshes, phoenixContract.balanceOf(address(this)));
     }
     
     function calculateAshBuy(uint256 blkape, uint256 contractBalance) public view returns(uint256) {
@@ -117,7 +136,7 @@ contract PhoenixAshes {
     }
 
     function getBalance(address addr) public view returns(uint256) {
-        return phoenix.balanceOf(addr);
+        return phoenixContract.balanceOf(addr);
     }
 
     function getNextDepositTime(address adr) public view returns(uint256) {

@@ -43,9 +43,9 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
     event CreatePhoenixNFT(uint256 indexed id);
 	
     constructor(address multiSignWallet, string memory baseURI) ERC721("Phoenix", "PhoenixNFT") {
-        setBaseURI(baseURI);
         _pause();
         _owner = multiSignWallet;
+        setBaseURI(baseURI);
     }
 	
     modifier saleIsOpen {
@@ -94,7 +94,7 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
         baseTokenURI = baseURI;
     }
 
-    function getAccountReflection(address addr) external view returns (uint256) {
+    function getAccountReflectionPerc(address addr) external view returns (uint256) {
         uint256 tokenCount = balanceOf(addr);
         uint256[] memory tokenIds = new uint256[](tokenCount);
         string[] memory rarities = new string[](tokenCount);
@@ -174,10 +174,6 @@ contract PhoenixNFT is ERC721, ERC721Enumerable, ERC721Royalty, ERC721Pausable {
         return _rarities[tokenId];
     }
 
-
-    // function _baseURI() internal view virtual override returns (string memory) {
-    //     return baseTokenURI;
-    // }
     
     function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal virtual override(ERC721, ERC721Enumerable, ERC721Pausable) {
         super._beforeTokenTransfer(from, to, tokenId);
